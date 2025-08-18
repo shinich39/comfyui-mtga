@@ -65,29 +65,29 @@ function init(elem) {
       index = -1;
 
   const origParser = ac.parser;
-  ac.parser = (el, stop) => {
+  ac.parser = (el) => {
     // console.log("parser", el);
-    const r = origParser(el, stop);
+    const r = origParser(el);
     const text = r.body.toLowerCase();
 
     hide();
 
     if (text.length < 1 || text.length > 16) {
-      stop();
+      ac.stop();
       return r;
     }
 
     return r;
   }
 
-  ac.filter = (req, i, candidates, stop) => {
+  ac.filter = (req, i, candidates) => {
     // console.log("filter", res);
     const { tag, parts } = req;
     const a = parts.body;
     const b = tag.key;
 
     if (ac.result.length >= Settings.MaxItemCount) {
-      stop();
+      ac.stop();
       return false;
     }
 
@@ -117,8 +117,6 @@ function init(elem) {
     } else if (items[index]?.result) {
       ac.set(items[index].result);
     }
-    
-    render();
   }
 
   const render = () => {
@@ -172,6 +170,7 @@ function init(elem) {
     index = -1;
     listEl.innerHTML = "";
     listEl.style.visibility = "hidden";
+    ac.stop();
   }
 
   const keydownHandler = (e) => {
@@ -181,23 +180,24 @@ function init(elem) {
         case "ArrowUp":
           e.preventDefault();
           index = Math.max(-1, index - 1);
-          load();
+          render();
           break;
         case "ArrowDown":
           e.preventDefault();
           index = Math.min(items.length - 1, index + 1);
-          load();
+          render();
           break;
         case "Escape":
           e.preventDefault();
-          index = -1;
-          load();
+          hide();
+          break;
+        case "ArrowLeft":
+        case "ArrowRight":
           hide();
           break;
         case "Enter":
-        // case "ArrowLeft":
-        // case "ArrowRight":
           e.preventDefault();
+          load();
           mtga.History.add();
           hide();
           break;
@@ -234,15 +234,15 @@ function init(elem) {
       }
 
       if (Settings.showCount) {
-        html += ` (${tag.count}) `;
+        html += ` (${tag.count})`;
       }
 
       itemEl.innerHTML = html;
-      itemEl.addEventListener("click", (e) => {
-        e.preventDefault();
-        index = idx;
-        load();
-      });
+      // itemEl.addEventListener("click", (e) => {
+      //   e.preventDefault();
+      //   index = idx;
+      //   render();
+      // });
 
       items.push({
         result: res,

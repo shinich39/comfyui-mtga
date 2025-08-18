@@ -482,6 +482,7 @@ var AutoComplete = class {
   _reqId;
   _chunkSize;
   _state;
+  _stop;
   constructor(el) {
     this.element = el;
     this.tags = [];
@@ -514,6 +515,7 @@ var AutoComplete = class {
     this._reqId = 0;
     this._chunkSize = 100;
     this._state = getState(el, true);
+    this._stop = () => void 0;
   }
   findIndex(value) {
     const index = this.index;
@@ -565,6 +567,10 @@ var AutoComplete = class {
   compare(a, b) {
     return compareString(a, b);
   }
+  stop(kill) {
+    const stop = this._stop;
+    stop?.(kill);
+  }
   reset() {
     setState(this.element, this._state);
   }
@@ -580,6 +586,7 @@ var AutoComplete = class {
     setState(this.element, state);
   }
   exec() {
+    this.stop(true);
     const reqId = this._reqId + 1;
     const chunkSize = this._chunkSize;
     const startedAt = Date.now();
@@ -589,20 +596,14 @@ var AutoComplete = class {
       isStopped = true;
       isKilled = kill || false;
     };
-    const parts = this.parser(this.element, stop);
+    const parts = this.parser(this.element);
     const text = parts.body;
     const candidates = !text ? [] : this.findIndex(text) || this.tags;
     this.result = result;
     this._state = getState(this.element, true);
     this._reqId = reqId;
+    this._stop = stop;
     const processChunk = () => {
-      if (this._reqId !== reqId || isKilled) {
-        return;
-      }
-      if (isStopped || this.timeout && Date.now() - startedAt >= this.timeout) {
-        this.onEnd?.(result);
-        return;
-      }
       const chunks = [];
       let j = i + chunkSize;
       while (i < j && i < candidates.length) {
@@ -611,14 +612,21 @@ var AutoComplete = class {
           tag,
           parts
         };
-        const ok = this.filter(req, i, candidates, stop);
+        const ok = this.filter(req, i, candidates);
         if (ok) {
           chunks.push(req);
           result.push(req);
         }
         i++;
       }
-      isStopped = i >= candidates.length;
+      if (isKilled || this._reqId !== reqId) {
+        return;
+      }
+      if (isStopped || i >= candidates.length || this.timeout && Date.now() - startedAt >= this.timeout) {
+        this.onData?.(chunks);
+        this.onEnd?.(result);
+        return;
+      }
       this.onData?.(chunks);
       setTimeout(processChunk, 0);
     };
