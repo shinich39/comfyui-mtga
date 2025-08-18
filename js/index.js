@@ -197,7 +197,7 @@ function init(elem) {
   }
 
   const onLoad = (result) => {
-    console.log("onLoad", result);
+    // console.log("onLoad", result);
 
     items = [];
     index = -1;
