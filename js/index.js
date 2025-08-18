@@ -6,6 +6,12 @@ import { ComfyWidgets } from "../../scripts/widgets.js";
 import { MTGA } from "./libs/mtga.mjs";
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
+const Settings = {
+  MaxVisibleItemCount: 10,
+  MaxItemCount: 139,
+  Timeout: 0,
+  MinDanbooruCount: 39,
+}
 const Tags = [];
 
 const COLOR1 = "#ddd";
@@ -49,11 +55,11 @@ function init(elem) {
   }
 
   const ac = mtga.AutoComplete;
-  ac.timeout = app.extensionManager.setting.get('shinich39.MTGA.Timeout') || 3939;
+  ac.timeout = app.extensionManager.setting.get('shinich39.MTGA.Timeout');
   ac.tags = Tags;
 
-  const MAX_ITEM_COUNT = app.extensionManager.setting.get('shinich39.MTGA.MaxItemCount') || 139;
-  const VISIBLE_COUNT = app.extensionManager.setting.get('shinich39.MTGA.MaxVisibleItemCount') || 10;
+  const MAX_ITEM_COUNT = app.extensionManager.setting.get('shinich39.MTGA.MaxItemCount');
+  const VISIBLE_COUNT = app.extensionManager.setting.get('shinich39.MTGA.MaxVisibleItemCount');
 
   let items = [],
       index = -1;
@@ -261,7 +267,7 @@ app.registerExtension({
       name: 'Max visible item count',
       type: 'number',
       tooltip: 'Refresh required',
-      defaultValue: 10,
+      defaultValue: Settings.MaxVisibleItemCount,
     },
     {
       id: 'shinich39.MTGA.MaxItemCount',
@@ -269,7 +275,7 @@ app.registerExtension({
       name: 'Max item count',
       type: 'number',
       tooltip: 'Refresh required',
-      defaultValue: 139,
+      defaultValue: Settings.MaxItemCount,
     },
     {
       id: 'shinich39.MTGA.Timeout',
@@ -277,7 +283,7 @@ app.registerExtension({
       name: 'Timeout',
       type: 'number',
       tooltip: 'Refresh required',
-      defaultValue: 3939,
+      defaultValue: Settings.Timeout,
     },
     {
       id: 'shinich39.MTGA.MinDanbooruCount',
@@ -285,7 +291,7 @@ app.registerExtension({
       name: 'Min danbooru count',
       type: 'number',
       tooltip: 'Refresh required',
-      defaultValue: 100,
+      defaultValue: Settings.MinDanbooruCount,
     },
   ],
   init() {
@@ -325,7 +331,7 @@ app.registerExtension({
           //   ...
           // ]
 
-          const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount') || 100;
+          const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount');
 
           tags = tags
             .filter((arr) => {
