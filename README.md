@@ -10,3 +10,7 @@ Make Textarea Great Again
 - Start with "@": Artists
 - Start with "#": Characters
 - Start with any characters: All tags
+
+## References
+
+- [danbooru-tags-json](https://github.com/shinich39/danbooru-tags-json)
