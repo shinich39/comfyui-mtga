@@ -490,7 +490,7 @@ var AutoComplete = class {
     this.timeout = 0;
     this.result = [];
     this.parser = (el2) => {
-      const parts = el2.value.split(/[,.\s․‧・｡。{}()<>[\]\\/|'"`!?]/);
+      const parts = el2.value.split(/[,.․‧・｡。{}()<>[\]\\/|'"`!?]|\r\n|\r|\n/);
       const index = el2.selectionStart;
       let selectionStart = 0, selectionEnd = 0;
       for (const part of parts) {
@@ -596,13 +596,13 @@ var AutoComplete = class {
       isStopped = true;
       isKilled = kill || false;
     };
-    const parts = this.parser(this.element);
-    const text = parts.body;
-    const candidates = !text ? [] : this.findIndex(text) || this.tags;
     this.result = result;
     this._state = getState(this.element, true);
     this._reqId = reqId;
     this._stop = stop;
+    const parts = this.parser(this.element);
+    const text = parts.body;
+    const candidates = !text ? [] : this.findIndex(text) || this.tags;
     const processChunk = () => {
       const chunks = [];
       let j = i + chunkSize;
@@ -634,7 +634,7 @@ var AutoComplete = class {
   }
 };
 
-// src/index.ts
+// src/mtga.ts
 var MTGA = class {
   element;
   _keydownState;
@@ -716,7 +716,8 @@ var MTGA = class {
       }
     }, true);
     el.addEventListener("keyup", (e) => {
-      if (e.key.length === 1 || e.key === "Backspace") {
+      const { metaKey, ctrlKey, key } = e;
+      if (!metaKey && !ctrlKey && (key.length === 1 || key === "Backspace")) {
         this.AutoComplete.exec();
       }
     }, true);

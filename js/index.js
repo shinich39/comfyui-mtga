@@ -25,6 +25,7 @@ listEl.style.position = "absolute";
 listEl.style.visibility = "hidden";
 listEl.style.backgroundColor = COLOR2;
 listEl.style.color = COLOR1;
+listEl.style.fontFamily = "monospace";
 listEl.style.borderTop = "1px solid";
 listEl.style.borderLeft = "1px solid";
 document.body.appendChild(listEl);
@@ -68,12 +69,12 @@ function init(elem) {
   ac.parser = (el) => {
     // console.log("parser", el);
     const r = origParser(el);
-    const text = r.body.toLowerCase();
+    r.body = r.body.toLowerCase().replace(/\s/g, "_");
 
-    hide();
+    hide(true);
 
-    if (text.length < 1 || text.length > 16) {
-      ac.stop();
+    if (r.body.length < 1 || r.body.length > 39) {
+      ac.stop(true);
       return r;
     }
 
@@ -87,7 +88,7 @@ function init(elem) {
     const b = tag.key;
 
     if (ac.result.length >= Settings.MaxItemCount) {
-      ac.stop();
+      ac.stop(true);
       return false;
     }
 
@@ -165,12 +166,15 @@ function init(elem) {
     index = -1;
   }
 
-  const hide = () => {
+  const hide = (keep) => {
     items = [];
     index = -1;
     listEl.innerHTML = "";
     listEl.style.visibility = "hidden";
-    ac.stop();
+
+    if (!keep) {
+      ac.stop(true);
+    }
   }
 
   const keydownHandler = (e) => {
