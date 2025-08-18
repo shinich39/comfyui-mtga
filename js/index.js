@@ -11,7 +11,10 @@ const Settings = {
   MaxItemCount: 139,
   Timeout: 0,
   MinDanbooruCount: 39,
+  showCount: true,
+  showCategory: false,
 }
+
 const Tags = [];
 
 const COLOR1 = "#ddd";
@@ -58,9 +61,6 @@ function init(elem) {
   ac.timeout = app.extensionManager.setting.get('shinich39.MTGA.Timeout');
   ac.tags = Tags;
 
-  const MAX_ITEM_COUNT = app.extensionManager.setting.get('shinich39.MTGA.MaxItemCount');
-  const VISIBLE_COUNT = app.extensionManager.setting.get('shinich39.MTGA.MaxVisibleItemCount');
-
   let items = [],
       index = -1;
 
@@ -86,7 +86,7 @@ function init(elem) {
     const a = parts.body;
     const b = tag.key;
 
-    if (ac.result.length >= MAX_ITEM_COUNT) {
+    if (ac.result.length >= Settings.MaxItemCount) {
       stop();
       return false;
     }
@@ -122,10 +122,10 @@ function init(elem) {
   }
 
   const render = () => {
-    let min = Math.max(0, index - VISIBLE_COUNT / 2);
-    const max = Math.min(items.length, min + VISIBLE_COUNT);
-    if (max - min < VISIBLE_COUNT) {
-      min = Math.max(0, max - VISIBLE_COUNT);
+    let min = Math.max(0, index - Settings.MaxVisibleItemCount / 2);
+    const max = Math.min(items.length, min + Settings.MaxVisibleItemCount);
+    if (max - min < Settings.MaxVisibleItemCount) {
+      min = Math.max(0, max - Settings.MaxVisibleItemCount);
     }
 
     for (let i = 0; i < items.length; i++) {
@@ -219,7 +219,10 @@ function init(elem) {
       itemEl.style.borderRight = "1px solid " + COLOR1;
       itemEl.style.borderBottom = "1px solid " + COLOR1;
 
-      let html = "";
+      let html = Settings.showCategory 
+        ? `[${tag.type}] ` 
+        : "";
+
       for (const [type, value] of match) {
         if (type === -1) {
           continue;
@@ -228,6 +231,10 @@ function init(elem) {
         html += type === 0
           ? `<span style="background-color: yellow; color: black;">${value}</span>` 
           : `<span>${value}</span>`;
+      }
+
+      if (Settings.showCount) {
+        html += ` (${tag.count}) `;
       }
 
       itemEl.innerHTML = html;
@@ -262,11 +269,30 @@ app.registerExtension({
 	name: "shinich39.MTGA",
   settings: [
     {
+      id: 'shinich39.MTGA.ShowCount',
+      category: ['MTGA', 'Typing is so boring', 'ShowCount'],
+      name: 'Show count',
+      type: 'boolean',
+      defaultValue: Settings.showCount,
+      onChange: (v) => {
+        Settings.showCount = v;
+      }
+    },
+    {
+      id: 'shinich39.MTGA.ShowCategory',
+      category: ['MTGA', 'Typing is so boring', 'ShowCategory'],
+      name: 'Show category',
+      type: 'boolean',
+      defaultValue: Settings.showCategory,
+      onChange: (v) => {
+        Settings.showCategory = v;
+      }
+    },
+    {
       id: 'shinich39.MTGA.MaxVisibleItemCount',
       category: ['MTGA', 'Typing is so boring', 'MaxVisibleItemCount'],
       name: 'Max visible item count',
       type: 'number',
-      tooltip: 'Refresh required',
       defaultValue: Settings.MaxVisibleItemCount,
     },
     {
@@ -274,7 +300,6 @@ app.registerExtension({
       category: ['MTGA', 'Typing is so boring', 'MaxItemCount'],
       name: 'Max item count',
       type: 'number',
-      tooltip: 'Refresh required',
       defaultValue: Settings.MaxItemCount,
     },
     {
