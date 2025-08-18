@@ -28,14 +28,6 @@ document.addEventListener("mousemove", (e) => {
   listEl.style.left = (mouseX + 12) + "px";
 })
 
-const isShown = () => {
-  return listEl.style.visibility === "";
-}
-
-const hide = () => {
-  listEl.style.visibility = "hidden";
-}
-
 async function getTags() {
   const response = await api.fetchApi(`/shinich39/comfyui-mtga/load`, {
     method: "GET",
@@ -57,10 +49,10 @@ function init(elem) {
   }
 
   const ac = mtga.AutoComplete;
-  ac.timeout = app.extensionManager.setting.get('shinich39.MTGA.Timeout') || 512;
+  ac.timeout = app.extensionManager.setting.get('shinich39.MTGA.Timeout') || 3939;
   ac.tags = Tags;
 
-  const MAX_ITEM_COUNT = app.extensionManager.setting.get('shinich39.MTGA.MaxItemCount') || 39;
+  const MAX_ITEM_COUNT = app.extensionManager.setting.get('shinich39.MTGA.MaxItemCount') || 139;
   const VISIBLE_COUNT = app.extensionManager.setting.get('shinich39.MTGA.MaxVisibleItemCount') || 10;
 
   let items = [],
@@ -71,6 +63,8 @@ function init(elem) {
     // console.log("parser", el);
     const r = origParser(el, stop);
     const text = r.body.toLowerCase();
+
+    hide();
 
     if (text.length < 1 || text.length > 16) {
       stop();
@@ -135,8 +129,6 @@ function init(elem) {
       if (i >= min && i < max) {
         el.style.display = "";
         if (i === index) {
-          // el.style.color = COLOR2;
-          // el.style.backgroundColor = COLOR1;
           el.style.color = "#FFF";
           el.style.backgroundColor = "#000"
         }
@@ -144,6 +136,10 @@ function init(elem) {
         el.style.display = "none";
       }
     }
+  }
+
+  const isShown = () => {
+    return listEl.style.visibility === "";
   }
   
   const show = () => {
@@ -163,6 +159,13 @@ function init(elem) {
       listEl.style.zIndex = 3939;
     }
     index = -1;
+  }
+
+  const hide = () => {
+    items = [];
+    index = -1;
+    listEl.innerHTML = "";
+    listEl.style.visibility = "hidden";
   }
 
   const keydownHandler = (e) => {
@@ -196,23 +199,13 @@ function init(elem) {
     }
   }
 
-  const onLoad = (result) => {
-    // console.log("onLoad", result);
-
-    items = [];
-    index = -1;
-
-    listEl.innerHTML = "";
-
-    if (result.length < 1) {
-      hide();
-      return;
-    }
+  const onData = (chunks) => {
+    // console.log("onData", chunks);
 
     // render items
-    for (let i = 0; i < result.length; i++) {
+    for (let i = 0; i < chunks.length; i++) {
       const idx = i;
-      const res = result[i];
+      const res = chunks[i];
       const { tag, parts } = res;
       const { match } = ac.compare(parts.body, tag.key);
       const itemEl = document.createElement("div");
@@ -246,14 +239,17 @@ function init(elem) {
       listEl.appendChild(itemEl);
     }
 
-    show();
+    if (items.length > 0 && !isShown()) {
+      show();
+    }
+
     render();
   }
 
   ac.element.addEventListener("keydown", keydownHandler, true);
   ac.element.addEventListener("click", hide, true);
   ac.element.addEventListener("blur", hide, true);
-  ac.onLoad = onLoad;
+  ac.onData = onData;
 }
 
 app.registerExtension({
@@ -273,7 +269,7 @@ app.registerExtension({
       name: 'Max item count',
       type: 'number',
       tooltip: 'Refresh required',
-      defaultValue: 39,
+      defaultValue: 139,
     },
     {
       id: 'shinich39.MTGA.Timeout',
@@ -281,7 +277,7 @@ app.registerExtension({
       name: 'Timeout',
       type: 'number',
       tooltip: 'Refresh required',
-      defaultValue: 512,
+      defaultValue: 3939,
     },
     {
       id: 'shinich39.MTGA.MinDanbooruCount',
@@ -329,7 +325,7 @@ app.registerExtension({
           //   ...
           // ]
 
-          const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount') || 100;;
+          const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount') || 100;
 
           tags = tags
             .filter((arr) => {
