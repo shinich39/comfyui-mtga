@@ -104,20 +104,6 @@ function compareString(from, to) {
     match: result.reverse()
   };
 }
-function getAllCombinations(arr) {
-  const result = [];
-  const n = arr.length;
-  for (let i = 1; i < 1 << n; i++) {
-    const combo = [];
-    for (let j = 0; j < n; j++) {
-      if (i >> j & 1) {
-        combo.push(arr[j]);
-      }
-    }
-    result.push(combo);
-  }
-  return result;
-}
 var getRows = function(el) {
   const { short, long } = getState(el);
   const arr = el.value.split(/\n/);
@@ -208,159 +194,117 @@ var updateRows = function(el, rows, callback) {
   };
 };
 
-// src/modules/auto-pairing.ts
+// src/modules/pairify.ts
 var isOpening = function(pairs, value) {
   return Object.keys(pairs).includes(value);
 };
 var getClosing = function(pairs, value) {
   return pairs[value];
 };
-var AutoPairing = class {
-  element;
+var closePairHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const el = this.element;
+  const pairs = this.pairify.pairs;
+  const isValid = !ctrlKey && !altKey && isOpening(pairs, key);
+  if (!isValid) {
+    return;
+  }
+  e.preventDefault();
+  const { short, long, dir, isReversed } = getState(el);
+  const isRange = short !== long;
+  const opening = key;
+  const closing = getClosing(pairs, opening);
+  const left = el.value.substring(0, short);
+  const center = el.value.substring(short, long);
+  const right = el.value.substring(long);
+  let newShort, newLong, newValue;
+  if (!isRange) {
+    const start = (left + opening).length;
+    newValue = left + opening + closing + right;
+    newShort = start;
+    newLong = start;
+  } else {
+    newValue = left + opening + center + closing + right;
+    newShort = (left + opening).length;
+    newLong = (left + opening + center).length;
+  }
+  setState(el, {
+    isReversed,
+    short: newShort,
+    long: newLong,
+    dir,
+    value: newValue
+  });
+  this.history.add();
+};
+var clearPairHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValidKey = !ctrlKey && !altKey && !shiftKey && key === "Backspace";
+  if (!isValidKey) {
+    return;
+  }
+  const el = this.element;
+  const pairs = this.pairify.pairs;
+  const { short, long, dir, isReversed } = getState(el);
+  const isRange = short !== long;
+  if (isRange) {
+    return;
+  }
+  const opening = el.value.charAt(long - 1);
+  const closing = getClosing(pairs, opening);
+  const isValidChars = isOpening(pairs, opening) && getClosing(pairs, opening) === closing;
+  if (!isValidChars) {
+    return;
+  }
+  e.preventDefault();
+  const left = el.value.substring(0, long - 1);
+  const right = el.value.substring(long + 1);
+  const newValue = left + right;
+  const newShort = left.length;
+  const newLong = left.length;
+  setState(el, {
+    isReversed: false,
+    short: newShort,
+    long: newLong,
+    dir: "forward",
+    value: newValue
+  });
+  this.history.add();
+};
+var Pairify = class _Pairify {
+  parent;
   pairs;
-  constructor(el, pairs) {
-    this.element = el;
-    this.pairs = pairs;
+  constructor(parent) {
+    this.parent = parent;
+    this.pairs = { ..._Pairify.defaults.pairs };
+    parent.modules.push(
+      {
+        name: "ClosePair",
+        onKeydown: closePairHandler
+      },
+      {
+        name: "ClearPair",
+        onKeydown: clearPairHandler
+      }
+    );
   }
-  isInsert(e) {
-    const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-    return !altKey && !ctrlKey && isOpening(this.pairs, key);
-  }
-  isDelete(e) {
-    const el = this.element;
-    const pairs = this.pairs;
-    const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-    if (altKey || ctrlKey || shiftKey || key !== "Backspace") {
-      return false;
+  static defaults = {
+    pairs: {
+      "(": ")",
+      "[": "]",
+      "{": "}",
+      "<": ">",
+      "'": "'",
+      '"': '"',
+      "`": "`"
     }
-    const { short, long, dir, isReversed } = getState(el);
-    const isRange = short !== long;
-    if (isRange) {
-      return false;
-    }
-    const currChar = el.value.charAt(long - 1);
-    const nextChar = el.value.charAt(long);
-    return isOpening(pairs, currChar) && getClosing(pairs, currChar) === nextChar;
-  }
-  insert(e) {
-    const el = this.element;
-    const pairs = this.pairs;
-    const { key } = parseKeyboardEvent(e);
-    const { short, long, dir, isReversed } = getState(el);
-    const isRange = short !== long;
-    const opening = key;
-    const closing = getClosing(pairs, opening);
-    const left = el.value.substring(0, short);
-    const center = el.value.substring(short, long);
-    const right = el.value.substring(long);
-    let newShort, newLong, newValue;
-    if (!isRange) {
-      const start = (left + opening).length;
-      newValue = left + opening + closing + right;
-      newShort = start;
-      newLong = start;
-    } else {
-      newValue = left + opening + center + closing + right;
-      newShort = (left + opening).length;
-      newLong = (left + opening + center).length;
-    }
-    setState(el, {
-      isReversed,
-      short: newShort,
-      long: newLong,
-      dir,
-      value: newValue
-    });
-  }
-  delete(e) {
-    const el = this.element;
-    const pairs = this.pairs;
-    const { long } = getState(el);
-    const left = el.value.substring(0, long - 1);
-    const right = el.value.substring(long + 1);
-    const newValue = left + right;
-    const newShort = left.length;
-    const newLong = left.length;
-    setState(el, {
-      isReversed: false,
-      short: newShort,
-      long: newLong,
-      dir: "forward",
-      value: newValue
-    });
-  }
-};
-
-// src/modules/history.ts
-var isUndo = function(e) {
-  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  return ctrlKey && !shiftKey && key.toLowerCase() === "z";
-};
-var isRedo = function(e) {
-  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  return ctrlKey && shiftKey && key.toLowerCase() === "z";
-};
-var History = class {
-  element;
-  histories;
-  index;
-  maxCount;
-  constructor(el) {
-    this.element = el;
-    this.histories = [];
-    this.index = 1;
-    this.maxCount = 390;
-  }
-  prune() {
-    if (this.index > 1) {
-      this.histories = this.histories.slice(0, this.histories.length - (this.index - 1));
-      this.index = 1;
-    }
-  }
-  add(prune = true) {
-    const el = this.element;
-    if (prune) {
-      this.prune();
-    } else if (this.index !== 1) {
-      return;
-    }
-    const state = getState(el, true);
-    this.histories.push(state);
-    if (this.histories.length > this.maxCount) {
-      this.histories.shift();
-    }
-  }
-  prev() {
-    if (this.index < this.histories.length) {
-      this.index += 1;
-    }
-  }
-  next() {
-    if (this.index > 1) {
-      this.index -= 1;
-    }
-  }
-  curr() {
-    return this.histories[this.histories.length - this.index];
-  }
-  undo(e) {
-    const el = this.element;
-    this.prev();
-    const h = this.curr();
-    if (!h) {
-      return;
-    }
-    setState(el, h);
-  }
-  redo(e) {
-    const el = this.element;
-    this.next();
-    const h = this.curr();
-    if (!h) {
-      return;
-    }
-    setState(el, h);
-  }
+  };
 };
 
 // src/modules/commentify.ts
@@ -373,125 +317,233 @@ var hasComment = function(selectedRows) {
   }
   return false;
 };
-var Commentify = class {
-  element;
-  key;
-  removePattern;
-  newValue;
-  constructor(el) {
-    this.element = el;
-    this.key = "/";
-    this.removePattern = /^\/\/\s?/;
-    this.newValue = "// ";
+var commentifyHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
   }
-  isValid(e) {
-    const { key, altKey, shiftKey } = e;
-    const ctrlKey = e.ctrlKey || e.metaKey;
-    return ctrlKey && !altKey && !shiftKey && key === this.key;
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = ctrlKey && !altKey && !shiftKey && key === "/";
+  if (!isValid) {
+    return;
   }
-  exec(e) {
-    const el = this.element;
-    const { rows, selectedRows } = getRows(el);
-    const isMultiple = selectedRows.length > 1;
-    const shouldRemove = hasComment(selectedRows);
-    const state = updateRows(el, rows, (row) => {
-      const isSelected = row.selectionStart > -1 || row.selectionEnd > -1;
-      if (!isSelected) {
+  e.preventDefault();
+  const el = this.element;
+  const { pattern, value } = this.commentify;
+  const { rows, selectedRows } = getRows(el);
+  const isMultiple = selectedRows.length > 1;
+  const shouldRemove = hasComment(selectedRows);
+  const state = updateRows(el, rows, (row) => {
+    const isSelected = row.selectionStart > -1 || row.selectionEnd > -1;
+    if (!isSelected) {
+      return row.value;
+    }
+    if (isMultiple) {
+      const isEmpty = !row.value.trim();
+      if (shouldRemove) {
+        return row.value.replace(pattern, "");
+      } else if (isEmpty) {
         return row.value;
-      }
-      if (isMultiple) {
-        const isEmpty = !row.value.trim();
-        if (shouldRemove) {
-          return row.value.replace(this.removePattern, "");
-        } else if (isEmpty) {
-          return row.value;
-        } else {
-          return this.newValue + row.value;
-        }
       } else {
-        if (shouldRemove) {
-          return row.value.replace(this.removePattern, "");
-        } else {
-          return this.newValue + row.value;
-        }
+        return value + row.value;
       }
-    });
-    setState(el, state);
+    } else {
+      if (shouldRemove) {
+        return row.value.replace(pattern, "");
+      } else {
+        return value + row.value;
+      }
+    }
+  });
+  setState(el, state);
+  this.history.add();
+};
+var Commentify = class _Commentify {
+  parent;
+  pattern;
+  value;
+  constructor(parent) {
+    this.parent = parent;
+    this.pattern = _Commentify.defaults.pattern;
+    this.value = _Commentify.defaults.value;
+    parent.modules.push(
+      {
+        name: "Commentify",
+        onKeydown: commentifyHandler
+      }
+    );
   }
+  static defaults = {
+    pattern: /^\/\/\s?/,
+    value: "// "
+  };
 };
 
 // src/modules/indentify.ts
-var Indentify = class {
-  element;
-  key;
-  removePattern;
-  newValue;
-  constructor(el) {
-    this.element = el;
-    this.key = "Tab";
-    this.removePattern = /^[^\S\n\r][^\S\n\r]?/;
-    this.newValue = "  ";
+var indentifyHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
   }
-  isValid(e) {
-    const { key, altKey, shiftKey } = e;
-    const ctrlKey = e.ctrlKey || e.metaKey;
-    return !ctrlKey && !altKey && key === this.key;
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = !ctrlKey && !altKey && key === "Tab";
+  if (!isValid) {
+    return;
   }
-  exec(e) {
-    const el = this.element;
-    const { rows, selectedRows } = getRows(el);
-    const isMultiple = selectedRows.length > 1;
-    const shouldRemove = e.shiftKey;
-    const state = updateRows(el, rows, (row) => {
-      const isSelected = row.selectionStart > -1 || row.selectionEnd > -1;
-      if (!isSelected) {
+  e.preventDefault();
+  const el = this.element;
+  const { pattern, value } = this.indentify;
+  const { rows, selectedRows } = getRows(el);
+  const isMultiple = selectedRows.length > 1;
+  const shouldRemove = e.shiftKey;
+  const state = updateRows(el, rows, (row) => {
+    const isSelected = row.selectionStart > -1 || row.selectionEnd > -1;
+    if (!isSelected) {
+      return row.value;
+    }
+    if (isMultiple) {
+      const isEmpty = !row.value.trim();
+      if (shouldRemove) {
+        return row.value.replace(pattern, "");
+      } else if (isEmpty) {
         return row.value;
-      }
-      if (isMultiple) {
-        const isEmpty = !row.value.trim();
-        if (shouldRemove) {
-          return row.value.replace(this.removePattern, "");
-        } else if (isEmpty) {
-          return row.value;
-        } else {
-          return this.newValue + row.value;
-        }
       } else {
-        if (shouldRemove) {
-          return row.value.replace(this.removePattern, "");
-        } else {
-          return this.newValue + row.value;
-        }
+        return value + row.value;
       }
-    });
-    setState(el, state);
+    } else {
+      if (shouldRemove) {
+        return row.value.replace(pattern, "");
+      } else {
+        return value + row.value;
+      }
+    }
+  });
+  setState(el, state);
+  this.history.add();
+};
+var Indentify = class _Indentify {
+  parent;
+  pattern;
+  value;
+  constructor(parent) {
+    this.parent = parent;
+    this.pattern = _Indentify.defaults.pattern;
+    this.value = _Indentify.defaults.value;
+    parent.modules.push(
+      {
+        name: "Indentify",
+        onKeydown: indentifyHandler
+      }
+    );
   }
+  static defaults = {
+    pattern: /^[^\S\n\r][^\S\n\r]?/,
+    value: "  "
+  };
 };
 
-// src/modules/auto-complete.ts
-var AutoComplete = class {
-  element;
+// src/modules/tagify.ts
+var findIndex = function(indexes, value) {
+  for (const index of indexes) {
+    const pattern = index.pattern;
+    if (pattern.test(value)) {
+      return index;
+    }
+  }
+};
+var tagifyHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = !ctrlKey && (key.length === 1 || key === "Backspace");
+  if (!isValid) {
+    return;
+  }
+  const tagify = this.tagify;
+  tagify.stop(true);
+  const requestId = tagify._requestId + 1;
+  const chunkSize = tagify._chunkSize;
+  const result = [];
+  let isStopped = false, isKilled = false, i = 0;
+  const stop = (kill) => {
+    isStopped = true;
+    isKilled = kill || false;
+  };
+  tagify._requestId = requestId;
+  tagify._stop = stop;
+  const query = tagify.parser.call(this, this.element);
+  const text = query.body;
+  let candidates = [];
+  if (text) {
+    const index = findIndex(tagify.indexes, text);
+    if (index) {
+      candidates = index.tags;
+    } else {
+      candidates = tagify.tags;
+    }
+  }
+  const processChunk = () => {
+    const chunks = [];
+    let j = i + chunkSize;
+    while (i < j && i < candidates.length) {
+      const tag = candidates[i];
+      const chunk = {
+        tag,
+        query
+      };
+      const ok = tagify.filter?.call(this, chunk, i, candidates, result);
+      if (ok) {
+        chunks.push(chunk);
+        result.push(chunk);
+      }
+      i++;
+    }
+    if (isKilled || tagify._requestId !== requestId) {
+      return;
+    }
+    if (isStopped || i >= candidates.length) {
+      tagify.onData?.call(this, chunks, result);
+      tagify.onEnd?.call(this, result);
+      return;
+    }
+    tagify.onData?.call(this, chunks, result);
+    setTimeout(processChunk, 0);
+  };
+  processChunk();
+};
+var Tagify = class _Tagify {
+  parent;
   tags;
-  index;
-  timeout;
-  result;
+  indexes;
   parser;
   filter;
   onData;
   onEnd;
-  _reqId;
+  _requestId;
   _chunkSize;
-  _state;
   _stop;
-  constructor(el) {
-    this.element = el;
+  constructor(parent) {
+    this.parent = parent;
     this.tags = [];
-    this.index = {};
-    this.timeout = 0;
-    this.result = [];
-    this.parser = (el2) => {
-      const parts = el2.value.split(/[,.․‧・｡。{}()<>[\]\\/|'"`!?]|\r\n|\r|\n/);
-      const index = el2.selectionStart;
+    this.indexes = [];
+    this.parser = _Tagify.defaults.parser;
+    this.filter = _Tagify.defaults.filter;
+    this.onData = () => void 0;
+    this.onEnd = () => void 0;
+    this._requestId = 0;
+    this._chunkSize = _Tagify.defaults.chunkSize;
+    this._stop = () => void 0;
+    parent.modules.push(
+      {
+        name: "Tagify",
+        onKeyup: tagifyHandler
+      }
+    );
+  }
+  static defaults = {
+    chunkSize: 100,
+    parser: (el) => {
+      const parts = el.value.split(/[,.․‧・｡。{}()<>[\]\\/|'"`!?]|\r\n|\r|\n/);
+      const index = el.selectionStart;
       let selectionStart = 0, selectionEnd = 0;
       for (const part of parts) {
         selectionEnd = selectionStart + part.length;
@@ -500,70 +552,17 @@ var AutoComplete = class {
         }
         selectionStart = selectionEnd + 1;
       }
-      const head = el2.value.substring(0, selectionStart);
-      const body = el2.value.substring(selectionStart, selectionEnd).trim();
-      const tail = el2.value.substring(selectionEnd);
+      const head = el.value.substring(0, selectionStart);
+      const body = el.value.substring(selectionStart, selectionEnd).trim();
+      const tail = el.value.substring(selectionEnd);
       return {
         head,
         body,
         tail
       };
-    };
-    this.filter = () => true;
-    this.onData = () => void 0;
-    this.onEnd = () => void 0;
-    this._reqId = 0;
-    this._chunkSize = 100;
-    this._state = getState(el, true);
-    this._stop = () => void 0;
-  }
-  findIndex(value) {
-    const index = this.index;
-    const keys = Object.keys(index).sort((a, b) => b.length - a.length);
-    for (const k of keys) {
-      const { score } = compareString(k, value);
-      if (score === k.length) {
-        return index[k];
-      }
-    }
-  }
-  createIndex(size) {
-    const tags = this.tags;
-    const result = this.index;
-    this.index = result;
-    return new Promise((resolve) => {
-      let i = 0;
-      const processChunk = () => {
-        let j = i + 100;
-        while (i < tags.length) {
-          if (i >= j) {
-            setTimeout(processChunk, 0);
-            return;
-          }
-          const tag = tags[i];
-          const acc = [];
-          const combos = getAllCombinations(tag.key.split(""));
-          for (const c of combos) {
-            const v = c.join("");
-            if (v.length === size) {
-              acc.push(v);
-            }
-          }
-          const uniqCombos = [...new Set(acc)];
-          for (const c of uniqCombos) {
-            if (!result[c]) {
-              result[c] = [tag];
-            } else {
-              result[c].push(tag);
-            }
-          }
-          i++;
-        }
-        resolve(result);
-      };
-      processChunk();
-    });
-  }
+    },
+    filter: () => true
+  };
   compare(a, b) {
     return compareString(a, b);
   }
@@ -571,125 +570,162 @@ var AutoComplete = class {
     const stop = this._stop;
     stop?.(kill);
   }
-  reset() {
-    setState(this.element, this._state);
-  }
-  set(result) {
-    const short = result.parts.head.length + result.tag.value.length;
-    const long = result.parts.head.length + result.tag.value.length;
-    const value = result.parts.head + result.tag.value + result.parts.tail;
+  set(chunk) {
+    const short = chunk.query.head.length + chunk.tag.value.length;
+    const long = chunk.query.head.length + chunk.tag.value.length;
+    const value = chunk.query.head + chunk.tag.value + chunk.query.tail;
     const state = {
       short,
       long,
       value
     };
-    setState(this.element, state);
+    setState(this.parent.element, state);
   }
-  exec() {
-    this.stop(true);
-    const reqId = this._reqId + 1;
-    const chunkSize = this._chunkSize;
-    const startedAt = Date.now();
-    const result = [];
-    let isStopped = false, isKilled = false, i = 0;
-    const stop = (kill) => {
-      isStopped = true;
-      isKilled = kill || false;
-    };
-    this.result = result;
-    this._state = getState(this.element, true);
-    this._reqId = reqId;
-    this._stop = stop;
-    const parts = this.parser(this.element);
-    const text = parts.body;
-    const candidates = !text ? [] : this.findIndex(text) || this.tags;
-    const processChunk = () => {
-      const chunks = [];
-      let j = i + chunkSize;
-      while (i < j && i < candidates.length) {
-        const tag = candidates[i];
-        const req = {
-          tag,
-          parts
-        };
-        const ok = this.filter(req, i, candidates);
-        if (ok) {
-          chunks.push(req);
-          result.push(req);
-        }
-        i++;
+};
+
+// src/modules/history.ts
+var undoHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = ctrlKey && !altKey && !shiftKey && key.toLowerCase() === "z";
+  if (!isValid) {
+    return;
+  }
+  e.preventDefault();
+  const el = this.element;
+  const h = this.history.prev();
+  if (!h) {
+    return;
+  }
+  setState(el, h);
+};
+var redoHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = ctrlKey && !altKey && shiftKey && key.toLowerCase() === "z";
+  if (!isValid) {
+    return;
+  }
+  e.preventDefault();
+  const el = this.element;
+  const h = this.history.next();
+  if (!h) {
+    return;
+  }
+  setState(el, h);
+};
+var historyHandler = function(e) {
+  const keydownState = this._keydownState;
+  this._clearKeydownState();
+  if (!keydownState) {
+    return;
+  }
+  const el = this.element;
+  const prevValue = keydownState.value;
+  if (prevValue !== el.value) {
+    this.history.add();
+  } else {
+    const prevState = keydownState.state;
+    const currState = getState(el);
+    if (prevState.short !== currState.short || prevState.long !== currState.long) {
+      this.history.add(false);
+    }
+  }
+};
+var History = class _History {
+  parent;
+  items;
+  index;
+  maxCount;
+  constructor(parent) {
+    this.parent = parent;
+    this.items = [];
+    this.index = 1;
+    this.maxCount = _History.defaults.maxCount;
+    parent.modules.push(
+      {
+        name: "Undo",
+        onKeydown: undoHandler
+      },
+      {
+        name: "Redo",
+        onKeydown: redoHandler
+      },
+      {
+        name: "History",
+        onKeyup: historyHandler
       }
-      if (isKilled || this._reqId !== reqId) {
-        return;
-      }
-      if (isStopped || i >= candidates.length || this.timeout && Date.now() - startedAt >= this.timeout) {
-        this.onData?.(chunks);
-        this.onEnd?.(result);
-        return;
-      }
-      this.onData?.(chunks);
-      setTimeout(processChunk, 0);
-    };
-    processChunk();
+    );
+  }
+  static defaults = {
+    maxCount: 390
+  };
+  prune() {
+    if (this.index > 1) {
+      this.items = this.items.slice(0, this.items.length - (this.index - 1));
+      this.index = 1;
+    }
+  }
+  add(withPrune = true) {
+    const el = this.parent.element;
+    if (withPrune) {
+      this.prune();
+    } else if (this.index !== 1) {
+      return;
+    }
+    const state = getState(el, true);
+    this.items.push(state);
+    if (this.items.length > this.maxCount) {
+      this.items.shift();
+    }
+  }
+  prev() {
+    if (this.index < this.items.length) {
+      this.index += 1;
+    }
+    return this.curr();
+  }
+  next() {
+    if (this.index > 1) {
+      this.index -= 1;
+    }
+    return this.curr();
+  }
+  curr() {
+    return this.items[this.items.length - this.index];
   }
 };
 
 // src/mtga.ts
 var MTGA = class {
   element;
+  modules;
   _keydownState;
-  History;
-  Commentify;
-  Indentify;
-  AutoPairing;
-  AutoComplete;
+  _keydownEvent;
+  _keyupEvent;
+  _mouseupEvent;
   constructor(el) {
     this.element = el;
+    this.modules = [];
+    this.history = new History(this);
+    this.commentify = new Commentify(this);
+    this.indentify = new Indentify(this);
+    this.pairify = new Pairify(this);
+    this.tagify = new Tagify(this);
     this._keydownState = null;
-    this.History = new History(el);
-    this.Commentify = new Commentify(el);
-    this.Indentify = new Indentify(el);
-    this.AutoPairing = new AutoPairing(el, {
-      "(": ")",
-      "[": "]",
-      "{": "}",
-      "<": ">",
-      "'": "'",
-      '"': '"',
-      "`": "`"
-    });
-    this.AutoComplete = new AutoComplete(el);
-    el.addEventListener("keydown", (e) => {
-      if (isUndo(e)) {
-        e.preventDefault();
-        this.History.undo(e);
-        this._clearKeydownState();
-      } else if (isRedo(e)) {
-        e.preventDefault();
-        this.History.redo(e);
-        this._clearKeydownState();
-      } else if (this.AutoPairing.isInsert(e)) {
-        e.preventDefault();
-        this.AutoPairing.insert(e);
-        this.History.add();
-        this._clearKeydownState();
-      } else if (this.AutoPairing.isDelete(e)) {
-        e.preventDefault();
-        this.AutoPairing.delete(e);
-        this.History.add();
-        this._clearKeydownState();
-      } else if (this.Commentify.isValid(e)) {
-        e.preventDefault();
-        this.Commentify.exec(e);
-        this.History.add();
-        this._clearKeydownState();
-      } else if (this.Indentify.isValid(e)) {
-        e.preventDefault();
-        this.Indentify.exec(e);
-        this.History.add();
-        this._clearKeydownState();
-      } else if (![
-        // "Backspace",
+    this._keydownEvent = (e) => {
+      for (const m of this.modules) {
+        m.onKeydown?.call(this, e);
+        if (e.defaultPrevented) {
+          this._clearKeydownState();
+          return;
+        }
+      }
+      if (![
         "Meta",
         "Control",
         "Alt",
@@ -697,33 +733,37 @@ var MTGA = class {
       ].includes(e.key)) {
         this._setKeydownState(e);
       }
-    }, true);
-    el.addEventListener("keyup", (e) => {
+    };
+    this._keyupEvent = (e) => {
+      const el2 = this.element;
+      for (const m of this.modules) {
+        m.onKeyup?.call(this, e);
+        if (e.defaultPrevented) {
+          break;
+        }
+      }
       const keydownState = this._keydownState;
       this._clearKeydownState();
       if (!keydownState) {
         return;
       }
       const prevValue = keydownState.value;
-      if (prevValue !== el.value) {
-        this.History.add();
+      if (prevValue !== el2.value) {
+        this.history.add();
       } else {
         const prevState = keydownState.state;
-        const currState = getState(el);
+        const currState = getState(el2);
         if (prevState.short !== currState.short || prevState.long !== currState.long) {
-          this.History.add(false);
+          this.history.add(false);
         }
       }
-    }, true);
-    el.addEventListener("keyup", (e) => {
-      const { metaKey, ctrlKey, key } = e;
-      if (!metaKey && !ctrlKey && (key.length === 1 || key === "Backspace")) {
-        this.AutoComplete.exec();
-      }
-    }, true);
-    this.element.addEventListener("mouseup", (e) => {
-      this.History.add(false);
-    }, true);
+    };
+    this._mouseupEvent = (e) => {
+      this.history.add(false);
+    };
+    this.element.addEventListener("keydown", this._keydownEvent, true);
+    this.element.addEventListener("keyup", this._keyupEvent, true);
+    this.element.addEventListener("mouseup", this._mouseupEvent, true);
   }
   getState(withValue) {
     return getState(this.element, withValue);
@@ -743,5 +783,10 @@ var MTGA = class {
   }
 };
 export {
-  MTGA
+  Commentify,
+  History,
+  Indentify,
+  MTGA,
+  Pairify,
+  Tagify
 };

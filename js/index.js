@@ -3,19 +3,24 @@
 import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
-import { MTGA } from "./libs/mtga.mjs";
+import { MTGA, Commentify, History, Indentify, Pairify, Tagify } from "./libs/mtga.mjs";
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
+Pairify.defaults.pairs = {
+  "{": "}",
+  "(": ")",
+}
+
 const Settings = {
-  MaxVisibleItemCount: 10,
-  MaxItemCount: 139,
-  Timeout: 0,
+  MaxVisibleItemCount: 11,
+  MaxItemCount: 3939,
   MinDanbooruCount: 39,
   showCount: true,
   showCategory: false,
 }
 
 const Tags = [];
+const Indexes = [];
 
 const COLOR1 = "#ddd";
 const COLOR2 = "#333";
@@ -33,10 +38,9 @@ document.body.appendChild(listEl);
 document.addEventListener("mousemove", (e) => {
   const mouseX = e.clientX;
   const mouseY = e.clientY;
-
   listEl.style.top = (mouseY + 12) + "px";
   listEl.style.left = (mouseX + 12) + "px";
-})
+});
 
 async function getTags() {
   const response = await api.fetchApi(`/shinich39/comfyui-mtga/load`, {
@@ -53,56 +57,52 @@ async function getTags() {
 
 function init(elem) {
   const mtga = new MTGA(elem);
-  mtga.AutoPairing.pairs = {
-    "{": "}",
-    "(": ")",
-  }
+  const tagify = mtga.tagify;
 
-  const ac = mtga.AutoComplete;
-  ac.timeout = app.extensionManager.setting.get('shinich39.MTGA.Timeout');
-  ac.tags = Tags;
+  tagify.tags = Tags;
+  tagify.indexes = Indexes;
 
   let items = [],
       index = -1;
 
-  const origParser = ac.parser;
-  ac.parser = (el) => {
+  const origParser = tagify.parser;
+  tagify.parser = (el) => {
     // console.log("parser", el);
     const r = origParser(el);
     r.body = r.body.toLowerCase().replace(/\s/g, "_");
 
-    hide(true);
+    hide(false);
 
     if (r.body.length < 1 || r.body.length > 39) {
-      ac.stop(true);
+      hide();
       return r;
     }
 
     return r;
   }
 
-  ac.filter = (req, i, candidates) => {
+  tagify.filter = (req, i, candidates, result) => {
     // console.log("filter", res);
-    const { tag, parts } = req;
-    const a = parts.body;
+    const { tag, query } = req;
+    const a = query.body;
     const b = tag.key;
 
-    if (ac.result.length >= Settings.MaxItemCount) {
-      ac.stop(true);
+    if (result.length >= Settings.MaxItemCount) {
+      tagify.stop(true);
       return false;
     }
 
     if (a.startsWith("@")) {
-      const { score } = ac.compare(a.substring(1), b);
-      return tag.type === "artist" && score >= a.length - 1;
+      const { score } = tagify.compare(a.substring(1), b);
+      return score >= a.length - 1;
     }
 
     if (a.startsWith("#")) {
-      const { score } = ac.compare(a.substring(1), b);
-      return tag.type === "character" && score >= a.length - 1;
+      const { score } = tagify.compare(a.substring(1), b);
+      return score >= a.length - 1;
     }
     
-    const { score } = ac.compare(a, b);
+    const { score } = tagify.compare(a, b);
     return score >= a.length;
 
     // 100000 items, 5332ms
@@ -113,10 +113,9 @@ function init(elem) {
   }
 
   const load = () => {
-    if (index === -1) {
-      ac.reset();
-    } else if (items[index]?.result) {
-      ac.set(items[index].result);
+    const chunk = items[index]?.chunk;
+    if (chunk) {
+      tagify.set(chunk);
     }
   }
 
@@ -166,14 +165,13 @@ function init(elem) {
     index = -1;
   }
 
-  const hide = (keep) => {
+  const hide = (kill = true) => {
     items = [];
     index = -1;
     listEl.innerHTML = "";
     listEl.style.visibility = "hidden";
-
-    if (!keep) {
-      ac.stop(true);
+    if (kill) {
+      tagify.stop(true);
     }
   }
 
@@ -191,33 +189,34 @@ function init(elem) {
           index = Math.min(items.length - 1, index + 1);
           render();
           break;
-        case "Escape":
-          e.preventDefault();
-          hide();
-          break;
         case "ArrowLeft":
         case "ArrowRight":
+          hide();
+          break;
+        case "Escape":
+          e.preventDefault();
           hide();
           break;
         case "Enter":
           e.preventDefault();
           load();
-          mtga.History.add();
           hide();
           break;
       }
     }
   }
 
-  const onData = (chunks) => {
-    // console.log("onData", chunks);
+  const onData = (chunks, result) => {
+    // if (chunks.length) {
+    //   console.log("onData", chunks, result);
+    // }
 
     // render items
     for (let i = 0; i < chunks.length; i++) {
       const idx = i;
-      const res = chunks[i];
-      const { tag, parts } = res;
-      const { match } = ac.compare(parts.body, tag.key);
+      const chunk = chunks[i];
+      const { tag, query } = chunk;
+      const { match } = tagify.compare(query.body, tag.key);
       const itemEl = document.createElement("div");
       itemEl.style.padding = "2px 4px";
       itemEl.style.borderRight = "1px solid " + COLOR1;
@@ -249,7 +248,7 @@ function init(elem) {
       // });
 
       items.push({
-        result: res,
+        chunk,
         element: itemEl,
       });
 
@@ -263,10 +262,10 @@ function init(elem) {
     render();
   }
 
-  ac.element.addEventListener("keydown", keydownHandler, true);
-  ac.element.addEventListener("click", hide, true);
-  ac.element.addEventListener("blur", hide, true);
-  ac.onData = onData;
+  elem.addEventListener("keydown", keydownHandler, true);
+  elem.addEventListener("click", hide, true);
+  elem.addEventListener("blur", hide, true);
+  tagify.onData = onData;
 }
 
 app.registerExtension({
@@ -305,14 +304,6 @@ app.registerExtension({
       name: 'Max item count',
       type: 'number',
       defaultValue: Settings.MaxItemCount,
-    },
-    {
-      id: 'shinich39.MTGA.Timeout',
-      category: ['MTGA', 'Typing is so boring', 'Timeout'],
-      name: 'Timeout',
-      type: 'number',
-      tooltip: 'Refresh required',
-      defaultValue: Settings.Timeout,
     },
     {
       id: 'shinich39.MTGA.MinDanbooruCount',
@@ -371,7 +362,7 @@ app.registerExtension({
               const [name, type, count] = arr;
               return {
                 key: name,
-                value: name,
+                value: name + ", ",
                 type,
                 count
               };
@@ -381,6 +372,65 @@ app.registerExtension({
           console.log(`[shinich39-mtga] Tags filter with count >= ${min}: ${tags.length}`);
 
           Tags.push(...tags);
+
+          console.time("[shinich39-mtga] indexing...");
+
+          Indexes.push({
+            pattern: new RegExp("^@"),
+            tags: [],
+          }, {
+            pattern: new RegExp("^#"),
+            tags: [],
+          });
+
+          for (const tag of Tags) {
+            const key = tag.key;
+            const ch = tag.key[0];
+            const type = tag.type;
+
+            let escaped = ch;
+            
+            if (".^$*+?()[]{}|\\".includes(ch)) {
+              escaped = "\\" + escaped;
+            }
+
+            const found = Indexes.find(({ pattern }) => 
+              pattern.test(key));
+
+            if (found) {
+              found.tags.push(tag);
+            } else if (!(ch === "@" || ch === "#")) {
+              Indexes.push({
+                pattern: new RegExp("^"+escaped),
+                tags: [tag],
+              });
+            }
+
+            if (type === "artist") {
+              Indexes[0].tags.push(tag);
+            } else if (type === "character") {
+              Indexes[1].tags.push(tag);
+            }
+
+            // if (type === "artist" || type === "character") {
+            //   const prefix = type === "artist" ? "@" : "#";
+
+            //   const found = Indexes.find(({ pattern }) => 
+            //     pattern.test(prefix+key));
+
+            //   if (found) {
+            //     found.tags.push(tag);
+            //   } else if (!(ch === "@" || ch === "#")) {
+            //     Indexes.push({
+            //       pattern: new RegExp("^"+prefix+escaped),
+            //       tags: [tag],
+            //     });
+            //   }
+            // }
+          }
+
+          console.timeEnd("[shinich39-mtga] indexing...");
+          console.log("[shinich39-mtga] indexing result:", Indexes);
         });
         
     }, 1024);
