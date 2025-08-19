@@ -15,8 +15,9 @@ const Settings = {
   MaxVisibleItemCount: 11,
   MaxItemCount: 3939,
   MinDanbooruCount: 39,
-  showCount: true,
-  showCategory: false,
+  Suffix: ",",
+  ShowCount: true,
+  ShowCategory: false,
 }
 
 const Tags = [];
@@ -222,7 +223,7 @@ function init(elem) {
       itemEl.style.borderRight = "1px solid " + COLOR1;
       itemEl.style.borderBottom = "1px solid " + COLOR1;
 
-      let html = Settings.showCategory 
+      let html = Settings.ShowCategory 
         ? `[${tag.type}] ` 
         : "";
 
@@ -236,7 +237,7 @@ function init(elem) {
           : `<span>${value}</span>`;
       }
 
-      if (Settings.showCount) {
+      if (Settings.ShowCount) {
         html += ` (${tag.count})`;
       }
 
@@ -276,9 +277,9 @@ app.registerExtension({
       category: ['MTGA', 'Typing is so boring', 'ShowCount'],
       name: 'Show count',
       type: 'boolean',
-      defaultValue: Settings.showCount,
+      defaultValue: Settings.ShowCount,
       onChange: (v) => {
-        Settings.showCount = v;
+        Settings.ShowCount = v;
       }
     },
     {
@@ -286,10 +287,18 @@ app.registerExtension({
       category: ['MTGA', 'Typing is so boring', 'ShowCategory'],
       name: 'Show category',
       type: 'boolean',
-      defaultValue: Settings.showCategory,
+      defaultValue: Settings.ShowCategory,
       onChange: (v) => {
-        Settings.showCategory = v;
+        Settings.ShowCategory = v;
       }
+    },
+    {
+      id: 'shinich39.MTGA.Suffix',
+      category: ['MTGA', 'Typing is so boring', 'Suffix'],
+      name: 'Suffix',
+      type: 'string',
+      tooltip: 'Refresh required',
+      defaultValue: Settings.Suffix,
     },
     {
       id: 'shinich39.MTGA.MaxVisibleItemCount',
@@ -352,6 +361,7 @@ app.registerExtension({
           // ]
 
           const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount');
+          const suffix = app.extensionManager.setting.get('shinich39.MTGA.Suffix') || "";
 
           tags = tags
             .filter((arr) => {
@@ -362,7 +372,7 @@ app.registerExtension({
               const [name, type, count] = arr;
               return {
                 key: name,
-                value: name + ", ",
+                value: name + suffix,
                 type,
                 count
               };

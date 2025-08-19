@@ -552,9 +552,13 @@ var Tagify = class _Tagify {
         }
         selectionStart = selectionEnd + 1;
       }
-      const head = el.value.substring(0, selectionStart);
-      const body = el.value.substring(selectionStart, selectionEnd).trim();
-      const tail = el.value.substring(selectionEnd);
+      let head = el.value.substring(0, selectionStart), body = el.value.substring(selectionStart, selectionEnd), tail = el.value.substring(selectionEnd);
+      const match = body.match(/^(\s*)(.*?)(\s*)$/);
+      if (match) {
+        head = head + (match[1] || "");
+        body = match[2];
+        tail = (match[3] || "") + tail;
+      }
       return {
         head,
         body,
