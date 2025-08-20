@@ -5,9 +5,10 @@ Make Textarea Great Again
 ## Usage  
 
 - Ctrl+/: Commentify
-- Tab, Shirt+Tab: Indentify
+- Tab, Shift+Tab: Indentify
 - {, (: Auto-Close brackets
 - Ctrl+Enter, Ctrl+Shift+Enter: Line break
+- Ctrl+Shift+K: Remove current line
 - Start with "@": Artists
 - Start with "#": Characters
 - Start with any characters: All tags
