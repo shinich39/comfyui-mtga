@@ -156,6 +156,9 @@ var getRows = function(el) {
 var isOpening = function(pairs, value) {
   return Object.keys(pairs).includes(value);
 };
+var isPair = function(pairs, opening, closing) {
+  return pairs[opening] && pairs[opening] === closing;
+};
 var getClosing = function(pairs, value) {
   return pairs[value];
 };
@@ -214,10 +217,10 @@ var clearPairHandler = function(e) {
   if (isRange) {
     return;
   }
-  const opening = el.value.charAt(long - 1);
-  const closing = getClosing(pairs, opening);
-  const isValidChars = isOpening(pairs, opening) && getClosing(pairs, opening) === closing;
-  if (!isValidChars) {
+  const prevChar = el.value.charAt(long - 1);
+  const currChar = el.value.charAt(long);
+  const isValid = isPair(pairs, prevChar, currChar);
+  if (!isValid) {
     return;
   }
   e.preventDefault();
@@ -243,11 +246,11 @@ var Pairify = class _Pairify {
     this.pairs = { ..._Pairify.defaults.pairs };
     parent.modules.push(
       {
-        name: "ClosePair",
+        name: "pairifyClose",
         onKeydown: closePairHandler
       },
       {
-        name: "ClearPair",
+        name: "pairifyClear",
         onKeydown: clearPairHandler
       }
     );
@@ -266,14 +269,14 @@ var Pairify = class _Pairify {
 };
 
 // src/modules/commentify.ts
-var hasComment = function(selectedRows) {
+var isCommentified = function(selectedRows) {
   for (const r of selectedRows) {
-    const _hasComment = r.value.startsWith("//");
-    if (_hasComment) {
-      return true;
+    const ok = r.value.startsWith("//");
+    if (!ok) {
+      return false;
     }
   }
-  return false;
+  return true;
 };
 var onKeydown = function(e) {
   if (e.defaultPrevented) {
@@ -291,7 +294,7 @@ var onKeydown = function(e) {
   const { short, long, dir, isReversed } = getState(el);
   const selectedRows = rows.filter((r) => r.isSelected);
   const isMultiple = selectedRows.length > 1;
-  const shouldRemove = hasComment(selectedRows);
+  const shouldRemove = isCommentified(selectedRows);
   let newShort = short, newLong = long;
   const newValues = [];
   for (let i = 0; i < rows.length; i++) {
@@ -360,7 +363,7 @@ var Commentify = class _Commentify {
     this.value = _Commentify.defaults.value;
     parent.modules.push(
       {
-        name: "Commentify",
+        name: "commentify",
         onKeydown
       }
     );
@@ -457,7 +460,7 @@ var Indentify = class _Indentify {
     this.value = _Indentify.defaults.value;
     parent.modules.push(
       {
-        name: "Indentify",
+        name: "indentify",
         onKeydown: onKeydown2
       }
     );
@@ -562,7 +565,7 @@ var Tagify = class _Tagify {
     this._stop = () => void 0;
     parent.modules.push(
       {
-        name: "Tagify",
+        name: "tagify",
         onKeyup: onKeydown3
       }
     );
@@ -650,7 +653,7 @@ var redoHandler = function(e) {
   }
   setState(el, h);
 };
-var historyHandler = function(e) {
+var pushHandler = function(e) {
   const keydownState = this._keydownState;
   this._clearKeydownState();
   if (!keydownState) {
@@ -680,16 +683,16 @@ var History = class _History {
     this.maxCount = _History.defaults.maxCount;
     parent.modules.push(
       {
-        name: "Undo",
+        name: "historyUndo",
         onKeydown: undoHandler
       },
       {
-        name: "Redo",
+        name: "historyRedo",
         onKeydown: redoHandler
       },
       {
-        name: "History",
-        onKeyup: historyHandler
+        name: "historyPush",
+        onKeyup: pushHandler
       }
     );
   }
@@ -709,8 +712,13 @@ var History = class _History {
     } else if (this.index !== 1) {
       return;
     }
-    const state = getState(el, true);
-    this.items.push(state);
+    const prevState = this.items[this.items.length - 1];
+    const currState = getState(el, true);
+    const isChanged = !prevState || prevState.short !== currState.short || prevState.long !== currState.long || prevState.value !== currState.value;
+    if (!isChanged) {
+      return;
+    }
+    this.items.push(currState);
     if (this.items.length > this.maxCount) {
       this.items.shift();
     }
@@ -780,7 +788,7 @@ var Breakify = class {
     this.parent = parent;
     parent.modules.push(
       {
-        name: "Breakify",
+        name: "breakify",
         onKeydown: onKeydown4
       }
     );
@@ -835,7 +843,7 @@ var Removify = class {
     this.parent = parent;
     parent.modules.push(
       {
-        name: "Removify",
+        name: "removify",
         onKeydown: onKeydown5
       }
     );
@@ -850,7 +858,8 @@ var MTGA = class {
   _keydownState;
   _keydownEvent;
   _keyupEvent;
-  _mouseupEvent;
+  _focusEvent;
+  _blurEvent;
   constructor(el) {
     this.element = el;
     this.modules = [];
@@ -865,12 +874,10 @@ var MTGA = class {
     this._keydownEvent = (e) => {
       for (const m of this.modules) {
         m.onKeydown?.call(this, e);
-        if (e.defaultPrevented) {
-          this._clearKeydownState();
-          return;
-        }
       }
-      if (![
+      if (e.defaultPrevented) {
+        this._clearKeydownState();
+      } else if (![
         "Meta",
         "Control",
         "Alt",
@@ -880,35 +887,26 @@ var MTGA = class {
       }
     };
     this._keyupEvent = (e) => {
-      const el2 = this.element;
       for (const m of this.modules) {
         m.onKeyup?.call(this, e);
-        if (e.defaultPrevented) {
-          break;
-        }
-      }
-      const keydownState = this._keydownState;
-      this._clearKeydownState();
-      if (!keydownState) {
-        return;
-      }
-      const prevValue = keydownState.value;
-      if (prevValue !== el2.value) {
-        this.history.add();
-      } else {
-        const prevState = keydownState.state;
-        const currState = getState(el2);
-        if (prevState.short !== currState.short || prevState.long !== currState.long) {
-          this.history.add(false);
-        }
       }
     };
-    this._mouseupEvent = (e) => {
+    const _selectionEvent = (e) => {
       this.history.add(false);
+    };
+    this._focusEvent = (e) => {
+      setTimeout(() => {
+        this.history.add(false);
+        this.element.addEventListener("pointerup", _selectionEvent, true);
+      }, 0);
+    };
+    this._blurEvent = (e) => {
+      this.element.removeEventListener("pointerup", _selectionEvent, true);
     };
     this.element.addEventListener("keydown", this._keydownEvent, true);
     this.element.addEventListener("keyup", this._keyupEvent, true);
-    this.element.addEventListener("mouseup", this._mouseupEvent, true);
+    this.element.addEventListener("focus", this._focusEvent, true);
+    this.element.addEventListener("blur", this._blurEvent, true);
   }
   getState(withValue) {
     return getState(this.element, withValue);
