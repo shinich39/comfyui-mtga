@@ -15,6 +15,8 @@ Make Textarea Great Again
 - LineCut: Ctrl+X with cursor on a character
 - LineRemove: Ctrl+Shift+K
 
+### Danbooru tags
+
 - Search artists: Start with "@"
 - Search characters: Start with "#"
 - Search all tags: Start with any characters
