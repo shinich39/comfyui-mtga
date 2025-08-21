@@ -3,10 +3,10 @@
 import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
-import { MTGA, Commentify, History, Indentify, Pairify, Tagify } from "./libs/mtga.mjs";
+import { MTGA, AutoPairModule, AutoCompleteModule } from "./libs/mtga.mjs";
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
-Pairify.defaults.pairs = {
+AutoPairModule.defaults.pairs = {
   "{": "}",
   "(": ")",
 }
@@ -58,52 +58,52 @@ async function getTags() {
 
 function init(elem) {
   const mtga = new MTGA(elem);
-  const tagify = mtga.tagify;
+  const ac = mtga.getModule(AutoCompleteModule.name);
 
-  tagify.tags = Tags;
-  tagify.indexes = Indexes;
+  ac.tags = Tags;
+  ac.indexes = Indexes;
 
   let items = [],
       index = -1;
 
-  const origParser = tagify.parser;
-  tagify.parser = (el) => {
+  const origParser = ac.parser;
+  ac.parser = function (el) {
     // console.log("parser", el);
     const r = origParser(el);
     r.body = r.body.toLowerCase().replace(/\s/g, "_");
 
-    hide(false);
+    hide();
 
     if (r.body.length < 1 || r.body.length > 39) {
-      hide();
+      this.stop(true);
       return r;
     }
 
     return r;
   }
 
-  tagify.filter = (req, i, candidates, result) => {
-    // console.log("filter", res);
-    const { tag, query } = req;
+  ac.filter = function (chunk, result, i, candidates) {
+    // console.log("filter", chunk);
+    const { tag, query } = chunk;
     const a = query.body;
     const b = tag.key;
 
     if (result.length >= Settings.MaxItemCount) {
-      tagify.stop(true);
+      this.stop(true);
       return false;
     }
 
     if (a.startsWith("@")) {
-      const { score } = tagify.compare(a.substring(1), b);
+      const { score } = ac.compare(a.substring(1), b);
       return score >= a.length - 1;
     }
 
     if (a.startsWith("#")) {
-      const { score } = tagify.compare(a.substring(1), b);
+      const { score } = ac.compare(a.substring(1), b);
       return score >= a.length - 1;
     }
     
-    const { score } = tagify.compare(a, b);
+    const { score } = ac.compare(a, b);
     return score >= a.length;
 
     // 100000 items, 5332ms
@@ -116,7 +116,7 @@ function init(elem) {
   const load = () => {
     const chunk = items[index]?.chunk;
     if (chunk) {
-      tagify.set(chunk);
+      ac.set(chunk);
     }
   }
 
@@ -166,13 +166,13 @@ function init(elem) {
     index = -1;
   }
 
-  const hide = (kill = true) => {
+  const hide = (kill) => {
     items = [];
     index = -1;
     listEl.innerHTML = "";
     listEl.style.visibility = "hidden";
     if (kill) {
-      tagify.stop(true);
+      ac.stop(true);
     }
   }
 
@@ -192,22 +192,26 @@ function init(elem) {
           break;
         case "ArrowLeft":
         case "ArrowRight":
-          hide();
+          hide(true);
           break;
         case "Escape":
           e.preventDefault();
-          hide();
+          hide(true);
           break;
         case "Enter":
           e.preventDefault();
           load();
-          hide();
+          hide(true);
           break;
+        default:
+          if (e.defaultPrevented) {
+            hide(true);
+          }
       }
     }
   }
 
-  const onData = (chunks, result) => {
+  const onData = function (chunks, result) {
     // if (chunks.length) {
     //   console.log("onData", chunks, result);
     // }
@@ -217,7 +221,7 @@ function init(elem) {
       const idx = i;
       const chunk = chunks[i];
       const { tag, query } = chunk;
-      const { match } = tagify.compare(query.body, tag.key);
+      const { match } = this.compare(query.body, tag.key);
       const itemEl = document.createElement("div");
       itemEl.style.padding = "2px 4px";
       itemEl.style.borderRight = "1px solid " + COLOR1;
@@ -263,10 +267,10 @@ function init(elem) {
     render();
   }
 
-  elem.addEventListener("keydown", keydownHandler, true);
-  elem.addEventListener("click", hide, true);
-  elem.addEventListener("blur", hide, true);
-  tagify.onData = onData;
+  elem.addEventListener("keydown", keydownHandler);
+  elem.addEventListener("click", () => hide(true));
+  elem.addEventListener("blur", () => hide(true));
+  ac.onData = onData;
 }
 
 app.registerExtension({

@@ -4,14 +4,20 @@ Make Textarea Great Again
 
 ## Usage  
 
-- Ctrl+/: Commentify
-- Tab, Shift+Tab: Indentify
-- {, (: Auto-Close brackets
-- Ctrl+Enter, Ctrl+Shift+Enter: Line break
-- Ctrl+Shift+K: Remove current line
-- Start with "@": Artists
-- Start with "#": Characters
-- Start with any characters: All tags
+- Undo, Redo: Ctrl+Z, Ctrl+Shift+Z
+- Comment: Ctrl+/
+- Indent: Tab, Shift+Tab
+- AutoComplete: ...
+- AutoPair: All brackets with commas
+- AutoIndent: Press Enter inside of brackets
+- LineBreak: Ctrl+Enter, Ctrl+Shift+Enter
+- LineCopy: Ctrl+C with cursor on a character
+- LineCut: Ctrl+X with cursor on a character
+- LineRemove: Ctrl+Shift+K
+
+- Search artists: Start with "@"
+- Search characters: Start with "#"
+- Search all tags: Start with any characters
 
 ## References
 
