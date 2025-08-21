@@ -521,11 +521,27 @@ var getClosing = function(pairs, value) {
 };
 
 // src/modules/auto-indent.ts
-var getIndent = function(str) {
-  const rows = str.split(/\r\n|\r|\n/);
-  const currRow = rows[rows.length - 1];
-  const currIndent = currRow.match(/^(\s*)/)?.[1] || "";
-  return currIndent;
+var createIndent = function(unit, size) {
+  return unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+};
+var getIndent = function(pairs, indentUnit, rows) {
+  const openingChars = Object.keys(pairs).join("");
+  const closingChars = Object.values(pairs).join("");
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const row = rows[i];
+    for (let j = row.length - 1; j >= 0; j--) {
+      const char = row[j];
+      if (closingChars.includes(char)) {
+        const depth = row.match(/^\s*/)?.[0].length || 0;
+        return createIndent(indentUnit, depth);
+      }
+      if (openingChars.includes(char)) {
+        const depth = (row.match(/^\s*/)?.[0].length || 0) + indentUnit.length;
+        return createIndent(indentUnit, depth);
+      }
+    }
+  }
+  return "";
 };
 var onKeydown4 = function(e) {
   if (e.defaultPrevented) {
@@ -551,12 +567,12 @@ var onKeydown4 = function(e) {
   let center = "\n";
   const right = el.value.substring(long);
   const rows = left.split(/\r\n|\r|\n/);
-  const currRow = rows[rows.length - 1];
-  const currIndent = getIndent(currRow);
+  const currIndent = getIndent(pairs, indentUnit, rows);
   let newShort = short + 1;
   if (isPair(pairs, prevChar, currChar)) {
-    center += currIndent + indentUnit + "\n" + currIndent;
-    newShort += currIndent.length + indentUnit.length;
+    const nextIndent = currIndent.substring(0, currIndent.length - indentUnit.length);
+    center += currIndent + "\n" + nextIndent;
+    newShort += currIndent.length;
   } else {
     center += currIndent;
     newShort += currIndent.length;
