@@ -514,6 +514,9 @@ var IndentModule = class _IndentModule extends IModule {
 var isOpening = function(pairs, value) {
   return Object.keys(pairs).includes(value);
 };
+var isClosing = function(pairs, value) {
+  return Object.values(pairs).includes(value);
+};
 var isPair = function(pairs, opening, closing) {
   return pairs[opening] && pairs[opening] === closing;
 };
@@ -570,7 +573,7 @@ var onKeydown4 = function(e) {
   const rows = left.split(/\r\n|\r|\n/);
   const currIndent = getIndent(pairs, indentUnit, rows);
   let newShort = short + 1;
-  if (isPair(pairs, prevChar, currChar)) {
+  if (isClosing(pairs, currChar)) {
     const nextIndent = currIndent.substring(0, currIndent.length - indentUnit.length);
     center += currIndent + "\n" + nextIndent;
     newShort += currIndent.length;
