@@ -4,6 +4,7 @@
   "description": "Make Textarea Great Again",
   "type": "module",
   "scripts": {
+    "up": "node scripts/update.js",
     "commit": "node scripts/commit.js"
   },
   "repository": {

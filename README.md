@@ -13,6 +13,7 @@ Make Textarea Great Again
 - LineBreak: Ctrl+Enter, Ctrl+Shift+Enter
 - LineCopy: Ctrl+C with cursor on a character
 - LineCut: Ctrl+X with cursor on a character
+- LinePaste: Ctrl+V with cursor on a character after single line copy e.g., "blahblah...\n"
 - LineRemove: Ctrl+Shift+K
 
 ### Danbooru tags

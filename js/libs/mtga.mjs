@@ -38,7 +38,11 @@ var IModule = class {
   name;
   index;
   onKeydown;
+  onKeydownAsync;
   onKeyup;
+  onKeyupAsync;
+  onPaste;
+  onPasteAsync;
   constructor(parent, name, index = 9999) {
     this.parent = parent;
     this.name = name;
@@ -956,7 +960,7 @@ var LineRemoveModule = class _LineRemoveModule extends IModule {
 
 // src/modules/line-cut.ts
 var IS_SUPPORTED = !!navigator.clipboard?.writeText;
-var onKeydown8 = function(e) {
+var onKeydownAsync = async function(e) {
   if (e.defaultPrevented) {
     return;
   }
@@ -987,32 +991,33 @@ var onKeydown8 = function(e) {
     }
   }
   if (!data) {
-    console.warn(`No data selected`);
     return;
   }
-  navigator.clipboard.writeText(data).then(() => {
-    mtga.setState({
-      isReversed: false,
-      short: newShort,
-      long: newLong,
-      dir: "none",
-      value: newValues.join("")
-    });
-    mtga.addHistory();
+  if (!data.endsWith("\n")) {
+    data += "\n";
+  }
+  await navigator.clipboard.writeText(data);
+  mtga.setState({
+    isReversed: false,
+    short: newShort,
+    long: newLong,
+    dir: "none",
+    value: newValues.join("")
   });
+  mtga.addHistory();
 };
 var LineCutModule = class _LineCutModule extends IModule {
   constructor(parent) {
     super(parent, _LineCutModule.name);
   }
-  onKeydown = onKeydown8;
+  onKeydownAsync = onKeydownAsync;
   static name = "LineCut";
   static defaults = {};
 };
 
 // src/modules/line-copy.ts
 var IS_SUPPORTED2 = !!navigator.clipboard?.writeText;
-var onKeydown9 = function(e) {
+var onKeydownAsync2 = async function(e) {
   if (e.defaultPrevented) {
     return;
   }
@@ -1031,19 +1036,78 @@ var onKeydown9 = function(e) {
   }
   e.preventDefault();
   const rows = getRows(el);
-  const data = rows.find((r) => r.isSelected)?.value;
+  let data = rows.find((r) => r.isSelected)?.value;
   if (!data) {
-    console.warn(`No data selected`);
     return;
   }
-  navigator.clipboard.writeText(data);
+  if (!data.endsWith("\n")) {
+    data += "\n";
+  }
+  await navigator.clipboard.writeText(data);
 };
 var LineCopyModule = class _LineCopyModule extends IModule {
   constructor(parent) {
     super(parent, _LineCopyModule.name);
   }
-  onKeydown = onKeydown9;
+  onKeydownAsync = onKeydownAsync2;
   static name = "LineCopy";
+  static defaults = {};
+};
+
+// src/modules/line-paste.ts
+var IS_SUPPORTED3 = !!navigator.clipboard?.readText;
+var onPaste = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  if (!IS_SUPPORTED3) {
+    console.warn(`navigator.clipboard?.readText not found`);
+    return;
+  }
+  const mtga = this.parent;
+  const el = this.parent.element;
+  const { short, long, dir, isReversed } = getState(el);
+  const isRange = short !== long;
+  const isValid = !isRange;
+  if (!isValid) {
+    return;
+  }
+  let copiedText = e.clipboardData?.getData("text");
+  if (!copiedText) {
+    return;
+  }
+  copiedText = copiedText.replace(/\r\n|\r/g, "\n");
+  const copiedRows = copiedText.split("\n");
+  const isSingleLine = copiedRows.length === 2;
+  const isLastLineEmpty = copiedRows[copiedRows.length - 1] === "";
+  if (!isSingleLine || !isLastLineEmpty) {
+    return;
+  }
+  e.preventDefault();
+  const rows = getRows(el);
+  let newValues = [], newShort = short + copiedText.length, newLong = long + copiedText.length;
+  for (const row of rows) {
+    const isSelected = row.isSelected;
+    if (isSelected) {
+      newValues.push(copiedText);
+    }
+    newValues.push(row.value);
+  }
+  mtga.setState({
+    isReversed,
+    short: newShort,
+    long: newLong,
+    dir,
+    value: newValues.join("")
+  });
+  mtga.addHistory();
+};
+var LinePasteModule = class _LinePasteModule extends IModule {
+  constructor(parent) {
+    super(parent, _LinePasteModule.name);
+  }
+  onPaste = onPaste;
+  static name = "LinePaste";
   static defaults = {};
 };
 
@@ -1055,6 +1119,7 @@ var MTGA = class {
   _keydownState;
   _keydownEvent;
   _keyupEvent;
+  _pasteEvent;
   _focusEvent;
   _blurEvent;
   constructor(el) {
@@ -1067,14 +1132,16 @@ var MTGA = class {
     this.modules[LineRemoveModule.name] = new LineRemoveModule(this);
     this.modules[LineCutModule.name] = new LineCutModule(this);
     this.modules[LineCopyModule.name] = new LineCopyModule(this);
+    this.modules[LinePasteModule.name] = new LinePasteModule(this);
     this.modules[AutoIndentModule.name] = new AutoIndentModule(this);
     this.modules[AutoPairModule.name] = new AutoPairModule(this);
     this.modules[AutoCompleteModule.name] = new AutoCompleteModule(this);
     this.moduleOrder = [];
     this._keydownState = null;
-    this._keydownEvent = (e) => {
+    this._keydownEvent = async (e) => {
       for (const m of this.moduleOrder) {
         m.onKeydown?.call(m, e);
+        await m.onKeydownAsync?.call(m, e);
       }
       if (e.defaultPrevented) {
         this._clearKeydownState();
@@ -1087,9 +1154,16 @@ var MTGA = class {
         this._setKeydownState(e);
       }
     };
-    this._keyupEvent = (e) => {
+    this._keyupEvent = async (e) => {
       for (const m of this.moduleOrder) {
         m.onKeyup?.call(m, e);
+        await m.onKeyupAsync?.call(m, e);
+      }
+    };
+    this._pasteEvent = async (e) => {
+      for (const m of this.moduleOrder) {
+        m.onPaste?.call(m, e);
+        await m.onPasteAsync?.call(m, e);
       }
     };
     const _selectionEvent = (e) => {
@@ -1106,6 +1180,7 @@ var MTGA = class {
     };
     this.element.addEventListener("keydown", this._keydownEvent, true);
     this.element.addEventListener("keyup", this._keyupEvent, true);
+    this.element.addEventListener("paste", this._pasteEvent, true);
     this.element.addEventListener("focus", this._focusEvent, true);
     this.element.addEventListener("blur", this._blurEvent, true);
     this.initModuleOrder();
@@ -1148,6 +1223,7 @@ var MTGA = class {
   destroy() {
     this.element.removeEventListener("keydown", this._keydownEvent);
     this.element.removeEventListener("keyup", this._keyupEvent);
+    this.element.removeEventListener("paste", this._pasteEvent);
     this.element.removeEventListener("focus", this._focusEvent);
     this.element.removeEventListener("blur", this._blurEvent);
   }
@@ -1162,6 +1238,7 @@ export {
   LineBreakModule,
   LineCopyModule,
   LineCutModule,
+  LinePasteModule,
   LineRemoveModule,
   MTGA
 };
