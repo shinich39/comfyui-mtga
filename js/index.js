@@ -16,6 +16,7 @@ const Settings = {
   MaxItemCount: 3939,
   MinDanbooruCount: 39,
   Suffix: ",",
+  ShowNumber: false,
   ShowCount: true,
   ShowCategory: false,
 }
@@ -64,7 +65,7 @@ function init(elem) {
   ac.indexes = Indexes;
 
   let items = [],
-      index = -1;
+      index = 0;
 
   const origParser = ac.parser;
   ac.parser = function (el) {
@@ -163,12 +164,11 @@ function init(elem) {
       listEl.style.visibility = "";
       listEl.style.zIndex = 3939;
     }
-    index = -1;
   }
 
   const hide = (kill) => {
     items = [];
-    index = -1;
+    index = 0;
     listEl.innerHTML = "";
     listEl.style.visibility = "hidden";
     if (kill) {
@@ -182,12 +182,20 @@ function init(elem) {
       switch(key) {
         case "ArrowUp":
           e.preventDefault();
-          index = Math.max(-1, index - 1);
+          if (index > 0) {
+            index = Math.max(-1, index - 1);
+          } else {
+            index = items.length - 1;
+          }
           render();
           break;
         case "ArrowDown":
           e.preventDefault();
-          index = Math.min(items.length - 1, index + 1);
+          if (index < items.length - 1) {
+            index = Math.min(items.length - 1, index + 1);
+          } else {
+            index = 0;
+          }
           render();
           break;
         case "ArrowLeft":
@@ -218,7 +226,7 @@ function init(elem) {
 
     // render items
     for (let i = 0; i < chunks.length; i++) {
-      const idx = i;
+      const idx = i + 1;
       const chunk = chunks[i];
       const { tag, query } = chunk;
       const { match } = this.compare(query.body, tag.key);
@@ -227,9 +235,19 @@ function init(elem) {
       itemEl.style.borderRight = "1px solid " + COLOR1;
       itemEl.style.borderBottom = "1px solid " + COLOR1;
 
-      let html = Settings.ShowCategory 
-        ? `[${tag.type}] ` 
-        : "";
+      let html = ""
+      
+      if (Settings.ShowNumber) {
+        html += `[${idx}]`;
+      }
+
+      if (Settings.ShowCategory) {
+        html += `[${tag.type}]`;
+      }
+
+      if (html) {
+        html += " ";
+      }
 
       for (const [type, value] of match) {
         if (type === -1) {
@@ -294,6 +312,16 @@ app.registerExtension({
       defaultValue: Settings.ShowCategory,
       onChange: (v) => {
         Settings.ShowCategory = v;
+      }
+    },
+    {
+      id: 'shinich39.MTGA.ShowNumber',
+      category: ['MTGA', 'Typing is so boring', 'ShowNumber'],
+      name: 'Show number',
+      type: 'boolean',
+      defaultValue: Settings.ShowNumber,
+      onChange: (v) => {
+        Settings.ShowNumber = v;
       }
     },
     {
