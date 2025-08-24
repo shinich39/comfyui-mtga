@@ -69,7 +69,11 @@ const onKeydown = function(e) {
     const ch = src[i];
 
     if (ch === "\n") {
-      emit("\n" + indentUnit.repeat(depth));
+      if (depth === 0) {
+        emit("\n" + indentUnit.repeat(depth));
+      } else {
+        trim();
+      }
       i++;
       continue;
     }
@@ -110,6 +114,12 @@ const onKeydown = function(e) {
     }
 
     if (isOpening(ch)) {
+      if (depth > 0) {
+        trim();
+        if (!shiftKey) {
+          emit("\n" + indentUnit.repeat(depth));
+        } 
+      }
       depth++;
       if (!shiftKey) {
         emit(ch + "\n" + indentUnit.repeat(depth));

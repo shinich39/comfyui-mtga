@@ -60,6 +60,8 @@ async function getTags() {
 }
 
 function init(elem) {
+  elem.style.wordBreak = "break-all";
+
   const mtga = new MTGA(elem);
   mtga.setModule(new BeautifyModule(mtga));
   const ac = mtga.getModule(AutoCompleteModule.name);
