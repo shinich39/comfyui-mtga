@@ -16,6 +16,8 @@ Make Textarea Great Again
 - LinePaste: Ctrl+V with cursor on a character after single line copy e.g., "blahblah...\n"
 - LineRemove: Ctrl+Shift+K
 
+- Beautify: Ctrl+B, Ctrl+Shift+B
+
 ### Danbooru tags
 
 - Search artists: Start with "@"

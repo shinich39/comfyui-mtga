@@ -33,7 +33,7 @@ var setState = function(el, state) {
 };
 
 // src/types/module.ts
-var IModule = class {
+var MTGAModule = class {
   parent;
   name;
   index;
@@ -162,13 +162,13 @@ var onKeyup = function(e) {
     mtga.addHistory();
   } else {
     const prevState = keydownState.state;
-    const currState = getState(el);
+    const currState = mtga.getState();
     if (prevState.short !== currState.short || prevState.long !== currState.long) {
       mtga.addHistory(false);
     }
   }
 };
-var HistoryModule = class _HistoryModule extends IModule {
+var HistoryModule = class _HistoryModule extends MTGAModule {
   items;
   maxCount;
   _i;
@@ -191,14 +191,14 @@ var HistoryModule = class _HistoryModule extends IModule {
     }
   }
   add(withPrune = true) {
-    const el = this.parent.element;
+    const mtga = this.parent;
     if (withPrune) {
       this.prune();
     } else if (this._i !== 1) {
       return;
     }
     const prevState = this.items[this.items.length - 1];
-    const currState = getState(el, true);
+    const currState = mtga.getState(true);
     const isChanged = !prevState || prevState.short !== currState.short || prevState.long !== currState.long || prevState.value !== currState.value;
     if (!isChanged) {
       return;
@@ -286,7 +286,7 @@ var singleLineHandler = function(e) {
   e.preventDefault();
   const { pattern, value } = this;
   const rows = getRows(el);
-  const { short, long, dir, isReversed } = getState(el);
+  const { short, long, dir, isReversed } = mtga.getState();
   const selectedRows = rows.filter((r) => r.isSelected);
   const selectedEmptyRows = selectedRows.filter((r) => !r.value.trim());
   const isMultiple = selectedRows.length > 1;
@@ -369,7 +369,7 @@ var multiLineHandler = function(e) {
   if (!isValid) {
     return;
   }
-  const { short, long, dir, isReversed } = getState(el);
+  const { short, long, dir, isReversed } = mtga.getState();
   const isRange = short !== long;
   if (isRange) {
     return;
@@ -394,7 +394,7 @@ var onKeydown2 = function(e) {
   singleLineHandler.call(this, e);
   multiLineHandler.call(this, e);
 };
-var CommentModule = class _CommentModule extends IModule {
+var CommentModule = class _CommentModule extends MTGAModule {
   pattern;
   value;
   constructor(parent) {
@@ -425,7 +425,7 @@ var onKeydown3 = function(e) {
   e.preventDefault();
   const { pattern, value } = this;
   const rows = getRows(el);
-  const { short, long, dir, isReversed } = getState(el);
+  const { short, long, dir, isReversed } = mtga.getState();
   const selectedRows = rows.filter((r) => r.isSelected);
   const isMultiple = selectedRows.length > 1;
   const shouldRemove = e.shiftKey;
@@ -487,7 +487,7 @@ var onKeydown3 = function(e) {
   });
   mtga.addHistory();
 };
-var IndentModule = class _IndentModule extends IModule {
+var IndentModule = class _IndentModule extends MTGAModule {
   pattern;
   value;
   constructor(parent) {
@@ -527,12 +527,12 @@ var getIndent = function(pairs, indentUnit, rows) {
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i];
     for (let j = row.length - 1; j >= 0; j--) {
-      const char = row[j];
-      if (closingChars.includes(char)) {
+      const ch = row[j];
+      if (closingChars.includes(ch)) {
         const depth = row.match(/^\s*/)?.[0].length || 0;
         return createIndent(indentUnit, depth);
       }
-      if (openingChars.includes(char)) {
+      if (openingChars.includes(ch)) {
         const depth = (row.match(/^\s*/)?.[0].length || 0) + indentUnit.length;
         return createIndent(indentUnit, depth);
       }
@@ -551,9 +551,9 @@ var onKeydown4 = function(e) {
   }
   e.preventDefault();
   const mtga = this.parent;
-  const el = mtga.element;
+  const el = this.parent.element;
   const { pairs, indentUnit } = this;
-  const { short, long, dir, isReversed } = getState(el);
+  const { short, long, dir, isReversed } = mtga.getState();
   const currChar = el.value.charAt(short);
   const left = el.value.substring(0, short);
   let center = "\n";
@@ -580,7 +580,7 @@ var onKeydown4 = function(e) {
   });
   mtga.addHistory();
 };
-var AutoIndentModule = class _AutoIndentModule extends IModule {
+var AutoIndentModule = class _AutoIndentModule extends MTGAModule {
   pairs;
   indentUnit;
   constructor(parent) {
@@ -614,7 +614,7 @@ var closePairHandler = function(e) {
     return;
   }
   e.preventDefault();
-  const { short, long, dir, isReversed } = getState(el);
+  const { short, long, dir, isReversed } = mtga.getState();
   const isRange = short !== long;
   const opening = key;
   const closing = getClosing(pairs, opening);
@@ -653,7 +653,7 @@ var clearPairHandler = function(e) {
   if (!isRemoveKey) {
     return;
   }
-  const { short, long } = getState(el);
+  const { short, long } = mtga.getState();
   const isRange = short !== long;
   if (isRange) {
     return;
@@ -682,7 +682,7 @@ var onKeydown5 = function(e) {
   closePairHandler.call(this, e);
   clearPairHandler.call(this, e);
 };
-var AutoPairModule = class _AutoPairModule extends IModule {
+var AutoPairModule = class _AutoPairModule extends MTGAModule {
   pairs;
   constructor(parent) {
     super(parent, _AutoPairModule.name);
@@ -723,6 +723,7 @@ var onKeyup2 = function(e) {
   }
   this.stop(true);
   const mtga = this.parent;
+  const el = this.parent.element;
   const requestId = this._requestId + 1;
   const chunkSize = this._chunkSize;
   const result = [];
@@ -733,7 +734,7 @@ var onKeyup2 = function(e) {
   };
   this._requestId = requestId;
   this._stop = stop;
-  const query = this.parser.call(this, mtga.element);
+  const query = this.parser.call(this, el);
   const text = query.body;
   let candidates = [];
   if (text) {
@@ -773,7 +774,7 @@ var onKeyup2 = function(e) {
   };
   processChunk();
 };
-var AutoCompleteModule = class _AutoCompleteModule extends IModule {
+var AutoCompleteModule = class _AutoCompleteModule extends MTGAModule {
   tags;
   indexes;
   parser;
@@ -863,7 +864,7 @@ var onKeydown6 = function(e) {
     return;
   }
   e.preventDefault();
-  const { short, long, dir, isReversed } = getState(el);
+  const { short, long, dir, isReversed } = mtga.getState();
   const rows = getRows(el);
   const selectedRows = rows.filter((r) => r.isSelected);
   const targetRow = e.shiftKey ? selectedRows[0] : selectedRows[selectedRows.length - 1];
@@ -898,7 +899,7 @@ var onKeydown6 = function(e) {
   });
   mtga.addHistory();
 };
-var LineBreakModule = class _LineBreakModule extends IModule {
+var LineBreakModule = class _LineBreakModule extends MTGAModule {
   constructor(parent) {
     super(parent, _LineBreakModule.name);
   }
@@ -949,7 +950,7 @@ var onKeydown7 = function(e) {
   });
   mtga.addHistory();
 };
-var LineRemoveModule = class _LineRemoveModule extends IModule {
+var LineRemoveModule = class _LineRemoveModule extends MTGAModule {
   constructor(parent) {
     super(parent, _LineRemoveModule.name);
   }
@@ -971,7 +972,7 @@ var onKeydownAsync = async function(e) {
   const mtga = this.parent;
   const el = this.parent.element;
   const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const { short, long, dir, isReversed } = getState(el);
+  const { short, long, dir, isReversed } = mtga.getState();
   const isRange = short !== long;
   const isValid = !isRange && ctrlKey && !altKey && !shiftKey && key.toLowerCase() === "x";
   if (!isValid) {
@@ -1006,7 +1007,7 @@ var onKeydownAsync = async function(e) {
   });
   mtga.addHistory();
 };
-var LineCutModule = class _LineCutModule extends IModule {
+var LineCutModule = class _LineCutModule extends MTGAModule {
   constructor(parent) {
     super(parent, _LineCutModule.name);
   }
@@ -1028,7 +1029,7 @@ var onKeydownAsync2 = async function(e) {
   const mtga = this.parent;
   const el = this.parent.element;
   const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const { short, long, dir, isReversed } = getState(el);
+  const { short, long, dir, isReversed } = mtga.getState();
   const isRange = short !== long;
   const isValid = !isRange && ctrlKey && !altKey && !shiftKey && key.toLowerCase() === "c";
   if (!isValid) {
@@ -1045,7 +1046,7 @@ var onKeydownAsync2 = async function(e) {
   }
   await navigator.clipboard.writeText(data);
 };
-var LineCopyModule = class _LineCopyModule extends IModule {
+var LineCopyModule = class _LineCopyModule extends MTGAModule {
   constructor(parent) {
     super(parent, _LineCopyModule.name);
   }
@@ -1055,18 +1056,13 @@ var LineCopyModule = class _LineCopyModule extends IModule {
 };
 
 // src/modules/line-paste.ts
-var IS_SUPPORTED3 = !!navigator.clipboard?.readText;
 var onPaste = function(e) {
   if (e.defaultPrevented) {
     return;
   }
-  if (!IS_SUPPORTED3) {
-    console.warn(`navigator.clipboard?.readText not found`);
-    return;
-  }
   const mtga = this.parent;
   const el = this.parent.element;
-  const { short, long, dir, isReversed } = getState(el);
+  const { short, long, dir, isReversed } = mtga.getState();
   const isRange = short !== long;
   const isValid = !isRange;
   if (!isValid) {
@@ -1102,7 +1098,7 @@ var onPaste = function(e) {
   });
   mtga.addHistory();
 };
-var LinePasteModule = class _LinePasteModule extends IModule {
+var LinePasteModule = class _LinePasteModule extends MTGAModule {
   constructor(parent) {
     super(parent, _LinePasteModule.name);
   }
@@ -1240,5 +1236,6 @@ export {
   LineCutModule,
   LinePasteModule,
   LineRemoveModule,
-  MTGA
+  MTGA,
+  MTGAModule
 };

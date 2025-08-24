@@ -3,7 +3,9 @@
 import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
+import { BeautifyModule } from "./libs/beautify.js";
 import { MTGA, AutoPairModule, AutoCompleteModule } from "./libs/mtga.mjs";
+
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
 AutoPairModule.defaults.pairs = {
@@ -59,6 +61,7 @@ async function getTags() {
 
 function init(elem) {
   const mtga = new MTGA(elem);
+  mtga.setModule(new BeautifyModule(mtga));
   const ac = mtga.getModule(AutoCompleteModule.name);
 
   ac.tags = Tags;
