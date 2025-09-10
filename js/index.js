@@ -382,8 +382,7 @@ app.registerExtension({
 	},
   setup() {
 
-    // bugfix
-    // don't interrupt workflow loading
+    // bugfix: don't interrupt workflow loading
     setTimeout(() => {
 
       getTags()
