@@ -14,6 +14,7 @@ AutoPairModule.defaults.pairs = {
 }
 
 const Settings = {
+  StartsWith: true,
   MaxVisibleItemCount: 11,
   MaxItemCount: 3939,
   MinDanbooruCount: 39,
@@ -110,6 +111,7 @@ function init(elem) {
     }
     
     const { score } = ac.compare(a, b);
+    
     return score >= a.length;
 
     // 100000 items, 5332ms
@@ -359,6 +361,14 @@ app.registerExtension({
       tooltip: 'Refresh required',
       defaultValue: Settings.MinDanbooruCount,
     },
+    {
+      id: 'shinich39.MTGA.StartsWith',
+      category: ['MTGA', 'Typing is so boring', 'StartsWith'],
+      name: 'Starts with',
+      type: 'boolean',
+      tooltip: 'Starts with first character, refresh required',
+      defaultValue: Settings.StartsWith,
+    },
   ],
   init() {
     const STRING = ComfyWidgets.STRING;
@@ -396,8 +406,9 @@ app.registerExtension({
           //   ...
           // ]
 
-          const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount');
+          const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount') || Settings.MinDanbooruCount;
           const suffix = app.extensionManager.setting.get('shinich39.MTGA.Suffix') || "";
+          const matchFirstChar = app.extensionManager.setting.get('shinich39.MTGA.StartsWith');
 
           tags = tags
             .filter((arr) => {
@@ -445,7 +456,8 @@ app.registerExtension({
 
             if (found) {
               found.tags.push(tag);
-            } else if (!(ch === "@" || ch === "#")) {
+            } // starts with first character
+            else if (matchFirstChar && !(ch === "@" || ch === "#")) {
               Indexes.push({
                 pattern: new RegExp("^"+escaped),
                 tags: [tag],
