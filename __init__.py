@@ -6,7 +6,7 @@
 @description: Make Textarea Great Again
 """
 
-from .py import danbooru 
+from .py import danbooru, model
 
 NODE_CLASS_MAPPINGS = {}
 

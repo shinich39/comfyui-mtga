@@ -91,8 +91,8 @@ def get_data():
 
     return []
 
-@PromptServer.instance.routes.get("/shinich39/comfyui-mtga/load")
-async def _load(request):
+@PromptServer.instance.routes.get("/shinich39/comfyui-mtga/get-tags")
+async def _get(request):
   try:
     tags = get_data()
 

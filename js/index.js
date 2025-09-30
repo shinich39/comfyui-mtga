@@ -14,11 +14,11 @@ AutoPairModule.defaults.pairs = {
 }
 
 const Settings = {
-  StartsWith: true,
   MaxVisibleItemCount: 11,
   MaxItemCount: 3939,
   MinDanbooruCount: 39,
   Suffix: ",",
+  StartsWithFirstCharacter: false,
   ShowNumber: false,
   ShowCount: true,
   ShowCategory: false,
@@ -48,7 +48,20 @@ document.addEventListener("mousemove", (e) => {
 });
 
 async function getTags() {
-  const response = await api.fetchApi(`/shinich39/comfyui-mtga/load`, {
+  const response = await api.fetchApi(`/shinich39/comfyui-mtga/get-tags`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json", },
+  });
+
+  if (response.status !== 200) {
+    throw new Error(response.statusText);
+  }
+
+  return await response.json();
+}
+
+async function getModels() {
+  const response = await api.fetchApi(`/shinich39/comfyui-mtga/get-models`, {
     method: "GET",
     headers: { "Content-Type": "application/json", },
   });
@@ -77,7 +90,8 @@ function init(elem) {
   ac.parser = function (el) {
     // console.log("parser", el);
     const r = origParser(el);
-    r.body = r.body.toLowerCase().replace(/\s/g, "_");
+    // r.body = r.body.toLowerCase().replace(/\s/g, "_");
+    r.body = r.body.replace(/\s/g, "_");
 
     hide();
 
@@ -108,6 +122,11 @@ function init(elem) {
     if (a.startsWith("#")) {
       const { score } = ac.compare(a.substring(1), b);
       return score >= a.length - 1;
+    }
+
+    if (a.startsWith("$c") || a.startsWith("$l") || a.startsWith("$e")) {
+      const { score } = ac.compare(a.substring(2), b);
+      return score >= a.length - 2;
     }
     
     const { score } = ac.compare(a, b);
@@ -142,8 +161,8 @@ function init(elem) {
       if (i >= min && i < max) {
         el.style.display = "";
         if (i === index) {
-          el.style.color = "#FFF";
-          el.style.backgroundColor = "#000"
+          el.style.color = "#00FF00";
+          el.style.backgroundColor = "#000";
         }
       } else {
         el.style.display = "none";
@@ -216,6 +235,7 @@ function init(elem) {
         case "Enter":
           e.preventDefault();
           load();
+          mtga.addHistory(true);
           hide(true);
           break;
         default:
@@ -236,7 +256,10 @@ function init(elem) {
       const idx = i + 1;
       const chunk = chunks[i];
       const { tag, query } = chunk;
-      const { match } = this.compare(query.body, tag.key);
+      const { match } = (query.body.startsWith("$c") || query.body.startsWith("$l") || query.body.startsWith("$e"))
+        ? this.compare(query.body.substring(2), tag.key)
+        : this.compare(query.body, tag.key);
+      
       const itemEl = document.createElement("div");
       itemEl.style.padding = "2px 4px";
       itemEl.style.borderRight = "1px solid " + COLOR1;
@@ -332,6 +355,14 @@ app.registerExtension({
       }
     },
     {
+      id: 'shinich39.MTGA.StartsWithFirstCharacter',
+      category: ['MTGA', 'Typing is so boring', 'StartsWithFirstCharacter'],
+      name: 'Starts with first character',
+      type: 'boolean',
+      tooltip: 'Starts with first character, refresh required',
+      defaultValue: Settings.StartsWithFirstCharacter,
+    },
+    {
       id: 'shinich39.MTGA.Suffix',
       category: ['MTGA', 'Typing is so boring', 'Suffix'],
       name: 'Suffix',
@@ -361,14 +392,6 @@ app.registerExtension({
       tooltip: 'Refresh required',
       defaultValue: Settings.MinDanbooruCount,
     },
-    {
-      id: 'shinich39.MTGA.StartsWith',
-      category: ['MTGA', 'Typing is so boring', 'StartsWith'],
-      name: 'Starts with',
-      type: 'boolean',
-      tooltip: 'Starts with first character, refresh required',
-      defaultValue: Settings.StartsWith,
-    },
   ],
   init() {
     const STRING = ComfyWidgets.STRING;
@@ -393,105 +416,162 @@ app.registerExtension({
   setup() {
 
     // bugfix: don't interrupt workflow loading
-    setTimeout(() => {
+    setTimeout(async () => {
+      try {
+        const loadedTags = (await getTags())?.tags || [];
 
-      getTags()
-        .then(({ tags }) => {
-          console.log(`[shinich39-mtga] Danbooru tags loaded successfully: ${tags.length}`);
+        console.log(`[shinich39-mtga] Danbooru tags loaded successfully: ${loadedTags.length}`);
 
-          // [
-          //   // [ NAME, TYPE, COUNT ],
-          //   // [ string, "artist"|"character"|"copyright"|"general"|"meta", number ],
-          //   // [ "landscape", "general", 1 ]
-          //   ...
-          // ]
+        // [
+        //   // [ NAME, TYPE, COUNT ],
+        //   // [ string, "artist"|"character"|"copyright"|"general"|"meta", number ],
+        //   // [ "landscape", "general", 1 ]
+        //   ...
+        // ]
 
-          const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount') || Settings.MinDanbooruCount;
-          const suffix = app.extensionManager.setting.get('shinich39.MTGA.Suffix') || "";
-          const matchFirstChar = app.extensionManager.setting.get('shinich39.MTGA.StartsWith');
+        const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount') || Settings.MinDanbooruCount;
+        const suffix = app.extensionManager.setting.get('shinich39.MTGA.Suffix') || "";
+        const matchFirstChar = app.extensionManager.setting.get('shinich39.MTGA.StartsWithFirstCharacter');
 
-          tags = tags
-            .filter((arr) => {
-              const [name, type, count] = arr;
-              return count >= min;
-            })
-            .map((arr) => {
-              const [name, type, count] = arr;
-              return {
-                key: name,
-                value: name + suffix,
-                type,
-                count
-              };
-            })
-            .sort((a, b) => b.count - a.count);
+        const convertedTags = loadedTags
+          .filter((arr) => {
+            const [name, type, count] = arr;
+            return count >= min;
+          })
+          .map((arr) => {
+            const [name, type, count] = arr;
+            return {
+              key: name,
+              value: name + suffix,
+              type,
+              count
+            };
+          })
+          .sort((a, b) => b.count - a.count);
 
-          console.log(`[shinich39-mtga] Tags filter with count >= ${min}: ${tags.length}`);
+        console.log(`[shinich39-mtga] Tags filter with count >= ${min}: ${convertedTags.length}`);
 
-          Tags.push(...tags);
+        Tags.push(...convertedTags);
 
-          console.time("[shinich39-mtga] indexing...");
+        console.time("[shinich39-mtga] indexing...");
 
-          Indexes.push({
-            pattern: new RegExp("^@"),
-            tags: [],
-          }, {
-            pattern: new RegExp("^#"),
-            tags: [],
-          });
+        Indexes.push({
+          pattern: new RegExp("^@"),
+          tags: [],
+        }, {
+          pattern: new RegExp("^#"),
+          tags: [],
+        });
 
-          for (const tag of Tags) {
-            const key = tag.key;
-            const ch = tag.key[0];
-            const type = tag.type;
+        for (const tag of Tags) {
+          const key = tag.key;
+          const ch = tag.key[0];
+          const type = tag.type;
 
-            let escaped = ch;
-            
-            if (".^$*+?()[]{}|\\".includes(ch)) {
-              escaped = "\\" + escaped;
-            }
-
-            const found = Indexes.find(({ pattern }) => 
-              pattern.test(key));
-
-            if (found) {
-              found.tags.push(tag);
-            } // starts with first character
-            else if (matchFirstChar && !(ch === "@" || ch === "#")) {
-              Indexes.push({
-                pattern: new RegExp("^"+escaped),
-                tags: [tag],
-              });
-            }
-
-            if (type === "artist") {
-              Indexes[0].tags.push(tag);
-            } else if (type === "character") {
-              Indexes[1].tags.push(tag);
-            }
-
-            // if (type === "artist" || type === "character") {
-            //   const prefix = type === "artist" ? "@" : "#";
-
-            //   const found = Indexes.find(({ pattern }) => 
-            //     pattern.test(prefix+key));
-
-            //   if (found) {
-            //     found.tags.push(tag);
-            //   } else if (!(ch === "@" || ch === "#")) {
-            //     Indexes.push({
-            //       pattern: new RegExp("^"+prefix+escaped),
-            //       tags: [tag],
-            //     });
-            //   }
-            // }
+          let escaped = ch;
+          
+          if (".^$*+?()[]{}|\\".includes(ch)) {
+            escaped = "\\" + escaped;
           }
 
-          console.timeEnd("[shinich39-mtga] indexing...");
-          console.log("[shinich39-mtga] indexing result:", Indexes);
-        });
-        
-    }, 1024);
+          const found = Indexes.find(({ pattern }) => 
+            pattern.test(key));
 
+          if (found) {
+            found.tags.push(tag);
+          } // starts with first character
+          else if (matchFirstChar && !(ch === "@" || ch === "#")) {
+            Indexes.push({
+              pattern: new RegExp("^"+escaped),
+              tags: [tag],
+            });
+          }
+
+          if (type === "artist") {
+            Indexes[0].tags.push(tag);
+          } else if (type === "character") {
+            Indexes[1].tags.push(tag);
+          }
+
+          // if (type === "artist" || type === "character") {
+          //   const prefix = type === "artist" ? "@" : "#";
+
+          //   const found = Indexes.find(({ pattern }) => 
+          //     pattern.test(prefix+key));
+
+          //   if (found) {
+          //     found.tags.push(tag);
+          //   } else if (!(ch === "@" || ch === "#")) {
+          //     Indexes.push({
+          //       pattern: new RegExp("^"+prefix+escaped),
+          //       tags: [tag],
+          //     });
+          //   }
+          // }
+        }
+
+        // let models = {
+        //   "checkpoints": [],
+        //   "clips": [],
+        //   "loras": [],
+        //   "vaes": [],
+        //   "embeddings": [],
+        // }
+
+        try {
+          const models = await getModels();
+          
+          console.log(`[shinich39-mtga] ComfyUI models loaded successfully:\n`, models);
+
+          const convertedCheckpoints = models.checkpoints.map((e) => {
+            const filename = e.replace(/[\\\/]/g, "/").split("/").pop() || "ERROR";
+            return {
+              key: e,
+              value: `<checkpoint:${filename}:1.0>`,
+              type: "",
+              count: 0,
+            }
+          });
+
+          const convertedLoras = models.loras.map((e) => {
+            const filename = e.replace(/[\\\/]/g, "/").split("/").pop() || "ERROR";
+            return {
+              key: e,
+              value: `<lora:${filename}:1.0>`,
+              type: "",
+              count: 0,
+            }
+          });
+
+          const convertedEmbeddings = models.embeddings.map((e) => {
+            const filename = e.replace(/[\\\/]/g, "/").split("/").pop() || "ERROR";
+            return {
+              key: e,
+              value: `<embedding:${filename}:1.0>`,
+              type: "",
+              count: 0,
+            }
+          });
+          
+          Indexes.push({
+            pattern: new RegExp("^\\$c"),
+            tags: convertedCheckpoints,
+          }, {
+            pattern: new RegExp("^\\$l"),
+            tags: convertedLoras,
+          }, {
+            pattern: new RegExp("^\\$e"),
+            tags: convertedEmbeddings,
+          });
+        } catch(err) {
+          console.error(err);
+        }
+
+        console.timeEnd("[shinich39-mtga] indexing...");
+        console.log("[shinich39-mtga] indexing result:", Indexes);
+      } catch(err) {
+        console.error(err);
+      }
+    }, 1024);
   },
 });

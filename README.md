@@ -20,9 +20,15 @@ Make Textarea Great Again
 
 ### Danbooru tags
 
-- Search artists: Start with "@"
-- Search characters: Start with "#"
-- Search all tags: Start with any characters
+- Artists: Start with "@"
+- Characters: Start with "#"
+- All tags: Start with any characters
+
+### Models
+
+- Checkpoints: Start with "$c"
+- Loras: Start with "$l"
+- Embeddings: Start with "$e"
 
 ## References
 
