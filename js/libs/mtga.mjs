@@ -381,6 +381,7 @@ var multiLineHandler = function(e) {
   e.preventDefault();
   const newShort = short + 1, newLong = long + 1;
   const newValue = el.value.substring(0, short) + "**/" + el.value.substring(long);
+  mtga.addHistory();
   mtga.setState({
     isReversed,
     short: newShort,
@@ -478,6 +479,7 @@ var onKeydown3 = function(e) {
     }
     newValues.push(newValue);
   }
+  mtga.addHistory();
   mtga.setState({
     isReversed,
     short: newShort,
@@ -545,7 +547,7 @@ var onKeydown4 = function(e) {
     return;
   }
   const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const isValid = !ctrlKey && !altKey && !shiftKey && key === "Enter";
+  const isValid = !ctrlKey && !altKey && key === "Enter";
   if (!isValid) {
     return;
   }
@@ -632,6 +634,7 @@ var closePairHandler = function(e) {
     newShort = (left + opening).length;
     newLong = (left + opening + center).length;
   }
+  mtga.addHistory();
   mtga.setState({
     isReversed,
     short: newShort,
@@ -649,7 +652,7 @@ var clearPairHandler = function(e) {
   const el = this.parent.element;
   const pairs = this.pairs;
   const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const isRemoveKey = !ctrlKey && !altKey && !shiftKey && key === "Backspace";
+  const isRemoveKey = !ctrlKey && !altKey && key === "Backspace";
   if (!isRemoveKey) {
     return;
   }
@@ -669,6 +672,7 @@ var clearPairHandler = function(e) {
   const newValue = left + right;
   const newShort = left.length;
   const newLong = left.length;
+  mtga.addHistory();
   mtga.setState({
     isReversed: false,
     short: newShort,
@@ -890,6 +894,7 @@ var onKeydown6 = function(e) {
     newShort += 1;
     newLong += 1;
   }
+  mtga.addHistory();
   mtga.setState({
     isReversed: false,
     short: newShort,
@@ -941,6 +946,7 @@ var onKeydown7 = function(e) {
   if (removeLastLinebreak) {
     value = value.substring(0, value.length - 1);
   }
+  mtga.addHistory();
   mtga.setState({
     isReversed: false,
     short: newShort,
@@ -998,6 +1004,7 @@ var onKeydownAsync = async function(e) {
     data += "\n";
   }
   await navigator.clipboard.writeText(data);
+  mtga.addHistory();
   mtga.setState({
     isReversed: false,
     short: newShort,
@@ -1089,6 +1096,7 @@ var onPaste = function(e) {
     }
     newValues.push(row.value);
   }
+  mtga.addHistory();
   mtga.setState({
     isReversed,
     short: newShort,
