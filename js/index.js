@@ -4,7 +4,7 @@ import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
 import { BeautifyModule } from "./libs/beautify.js";
-import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule } from "./libs/mtga.mjs";
+import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs";
 
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
@@ -78,18 +78,37 @@ function init(elem) {
 
   const mtga = new MTGA(elem);
   mtga.setModule(new BeautifyModule(mtga));
+  const his = mtga.getModule(HistoryModule.name);
   const ac = mtga.getModule(AutoCompleteModule.name);
   const lb = mtga.getModule(LineBreakModule.name);
+  const lr = mtga.getModule(LineRemoveModule.name);
 
-  const origKeydown = lb.onKeydown;
-  lb.onKeydown = function(e) {
-    const defaultPrevented = e.defaultPrevented;
-    const r = origKeydown.call(this, (e));
-    if (!defaultPrevented && e.defaultPrevented) {
-      e.stopPropagation(); // prevent ComfyUI RUN
+  ;(() => {
+    const origKeydown = lb.onKeydown;
+    lb.onKeydown = function(e) {
+      const defaultPrevented = e.defaultPrevented;
+      const r = origKeydown.call(this, (e));
+      if (!defaultPrevented && e.defaultPrevented) {
+        e.stopPropagation(); // prevent ComfyUI RUN
+      }
+      return r;
     }
-    return r;
-  }
+  })();
+
+  ;(() => {
+    const origKeydown = lr.onKeydown;
+    lr.onKeydown = function(e) {
+      const r = origKeydown.call(this, (e));
+
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "k") {
+        // prevent ComfyUI shortcut
+        e.preventDefault();
+        e.stopPropagation(); 
+      }
+
+      return r;
+    }
+  })();
 
   ac.tags = Tags;
   ac.indexes = Indexes;
@@ -135,11 +154,21 @@ function init(elem) {
       return score >= a.length - 1;
     }
 
-    if (a.startsWith("$c") || a.startsWith("$l") || a.startsWith("$e")) {
+    if (a.startsWith("$$$")) {
+      const { score } = ac.compare(a.substring(3), b);
+      return score >= a.length - 3;
+    }
+
+    if (a.startsWith("$$")) {
       const { score } = ac.compare(a.substring(2), b);
       return score >= a.length - 2;
     }
-    
+
+    if (a.startsWith("$")) {
+      const { score } = ac.compare(a.substring(1), b);
+      return score >= a.length - 1;
+    }
+
     const { score } = ac.compare(a, b);
     
     return score >= a.length;
@@ -154,7 +183,14 @@ function init(elem) {
   const load = () => {
     const chunk = items[index]?.chunk;
     if (chunk) {
+
+      // remove double commas
+      chunk.query.tail = chunk.query.tail.replace(/^,/, "");
+
+      mtga.addHistory(true);
       ac.set(chunk);
+      his.items.pop(); 
+      mtga.addHistory(true);
     }
   }
 
@@ -214,7 +250,7 @@ function init(elem) {
   }
 
   const keydownHandler = (e) => {
-    const { key } = e;
+    const { key, ctrlKey, metaKey, } = e;
     if (isShown()) {
       switch(key) {
         case "ArrowUp":
@@ -246,7 +282,6 @@ function init(elem) {
         case "Enter":
           e.preventDefault();
           load();
-          mtga.addHistory(true);
           hide(true);
           break;
         default:
@@ -254,6 +289,78 @@ function init(elem) {
             hide(true);
           }
       }
+    } else if ((ctrlKey || metaKey) && (key === "ArrowUp" || key === "ArrowDown")) {
+      // from mtga default parser
+      const el = e.target;
+      const parts = el.value.split(/[,{}|/]|\r\n|\r|\n/);
+      const index = el.selectionStart;
+
+      let selectionStart = 0,
+          selectionEnd = 0;
+
+      for (const part of parts) {
+        selectionEnd = selectionStart + part.length;
+        if (index >= selectionStart && index <= selectionEnd) {
+          break;
+        }
+        selectionStart = selectionEnd + 1;
+      }
+
+      let head = el.value.substring(0, selectionStart), 
+          body = el.value.substring(selectionStart, selectionEnd),
+          tail = el.value.substring(selectionEnd);
+
+      const match = body.match(/^(\s*)(.*?)(\s*)$/);
+
+      if (match) {
+        head = head + (match[1] || "");
+        body = match[2];
+        tail = (match[3] || "") + tail;
+      }
+
+      if (!body) {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      mtga.addHistory(true);
+
+      if (body.startsWith("(") && body.endsWith(")")) {
+        body = body.substring(1, body.length - 1);
+      }
+
+      let weight = 10;
+
+      const weightMatch = body.match(/:(\d+(?:\.\d+)?)$/);
+
+      if (weightMatch) {
+        body = body.replace(weightMatch[0], "");
+        weight = parseFloat(weightMatch[1]) * 10;
+      }
+
+      switch(key) {
+        case "ArrowUp": weight = weight + 1; break;
+        case "ArrowDown": weight = weight - 1; break;
+      }
+
+      weight = (weight / 10).toString(10);
+
+      if (weight !== "1") {
+        body = `(${body}:${weight})`;
+      }
+
+      const short = head.length;
+      const long = head.length + body.length;
+
+      mtga.setState({
+        short,
+        long,
+        value: head + body + tail,
+      });
+
+      mtga.addHistory(true);
     }
   }
 
@@ -267,10 +374,10 @@ function init(elem) {
       const idx = i + 1;
       const chunk = chunks[i];
       const { tag, query } = chunk;
-      const { match } = (query.body.startsWith("$c") || query.body.startsWith("$l") || query.body.startsWith("$e"))
-        ? this.compare(query.body.substring(2), tag.key)
+      const { match } = (query.body.startsWith("$") || query.body.startsWith("$$") || query.body.startsWith("$$$"))
+        ? this.compare(query.body.replace(/^\$+/, ""), tag.key)
         : this.compare(query.body, tag.key);
-      
+
       const itemEl = document.createElement("div");
       itemEl.style.padding = "2px 4px";
       itemEl.style.borderRight = "1px solid " + COLOR1;
@@ -565,13 +672,13 @@ app.registerExtension({
           });
           
           Indexes.push({
-            pattern: new RegExp("^\\$c"),
+            pattern: new RegExp("^\\$\\$\\$"),
             tags: convertedCheckpoints,
           }, {
-            pattern: new RegExp("^\\$l"),
+            pattern: new RegExp("^\\$\\$"),
             tags: convertedLoras,
           }, {
-            pattern: new RegExp("^\\$e"),
+            pattern: new RegExp("^\\$"),
             tags: convertedEmbeddings,
           });
         } catch(err) {

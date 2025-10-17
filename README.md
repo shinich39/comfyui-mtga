@@ -7,7 +7,7 @@ Make Textarea Great Again
 - Undo, Redo: Ctrl+Z, Ctrl+Shift+Z
 - Comment: Ctrl+/
 - Indent: Tab, Shift+Tab
-- AutoComplete: ...
+- AutoComplete: See below for details...
 - AutoPair: All brackets with commas
 - AutoIndent: Press Enter inside of brackets
 - LineBreak: Ctrl+Enter, Ctrl+Shift+Enter
@@ -17,18 +17,18 @@ Make Textarea Great Again
 - LineRemove: Ctrl+Shift+K
 
 - Beautify: Ctrl+B, Ctrl+Shift+B
+- Control weight: Ctrl+ArrowUp, Ctrl+ArrowDown
 
-### Danbooru tags
+## AutoComplete
 
-- Artists: Start with "@"
-- Characters: Start with "#"
-- All tags: Start with any characters
+Artists, Characters, tags from Danbooru tags.  
 
-### Models
-
-- Checkpoints: Start with "$c"
-- Loras: Start with "$l"
-- Embeddings: Start with "$e"
+- Artists: Starts with "@"
+- Characters: Starts with "#"
+- All tags: Starts with any characters
+- Embeddings: Starts with "$"
+- Loras: Starts with "$$"
+- Checkpoints: Starts with "$$$"
 
 ## References
 
