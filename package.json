@@ -1,6 +1,6 @@
 {
   "name": "comfyui-mtga",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "Make Textarea Great Again",
   "type": "module",
   "scripts": {

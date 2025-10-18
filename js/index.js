@@ -4,7 +4,9 @@ import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
 import { BeautifyModule } from "./libs/beautify.js";
-import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs";
+// import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs";
+// prevent load mgta-js cache
+import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs?v=1";
 
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
@@ -123,7 +125,7 @@ function init(elem) {
     // r.body = r.body.toLowerCase().replace(/\s/g, "_");
     r.body = r.body.replace(/\s/g, "_");
 
-    hide();
+    hide(false);
 
     if (r.body.length < 1 || r.body.length > 39) {
       this.stop(true);
@@ -183,14 +185,9 @@ function init(elem) {
   const load = () => {
     const chunk = items[index]?.chunk;
     if (chunk) {
-
       // remove double commas
       chunk.query.tail = chunk.query.tail.replace(/^,/, "");
-
-      mtga.addHistory(true);
       ac.set(chunk);
-      his.items.pop(); 
-      mtga.addHistory(true);
     }
   }
 
@@ -239,7 +236,7 @@ function init(elem) {
     }
   }
 
-  const hide = (kill) => {
+  const hide = (kill = true) => {
     items = [];
     index = 0;
     listEl.innerHTML = "";
@@ -273,20 +270,21 @@ function init(elem) {
           break;
         case "ArrowLeft":
         case "ArrowRight":
-          hide(true);
+          hide();
           break;
         case "Escape":
           e.preventDefault();
-          hide(true);
+          hide();
           break;
         case "Enter":
           e.preventDefault();
           load();
-          hide(true);
+          his.items.splice(his.items.length - 2, 1); // bugfix: remove linebreak history
+          hide();
           break;
         default:
           if (e.defaultPrevented) {
-            hide(true);
+            hide();
           }
       }
     } else if ((ctrlKey || metaKey) && (key === "ArrowUp" || key === "ArrowDown")) {
@@ -325,8 +323,6 @@ function init(elem) {
       e.preventDefault();
       e.stopPropagation();
 
-      mtga.addHistory(true);
-
       if (body.startsWith("(") && body.endsWith(")")) {
         body = body.substring(1, body.length - 1);
       }
@@ -359,8 +355,6 @@ function init(elem) {
         long,
         value: head + body + tail,
       });
-
-      mtga.addHistory(true);
     }
   }
 
@@ -434,8 +428,8 @@ function init(elem) {
   }
 
   elem.addEventListener("keydown", keydownHandler);
-  elem.addEventListener("click", () => hide(true));
-  elem.addEventListener("blur", () => hide(true));
+  elem.addEventListener("click", () => hide());
+  elem.addEventListener("blur", () => hide());
   ac.onData = onData;
 }
 
