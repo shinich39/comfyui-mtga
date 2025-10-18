@@ -4,9 +4,9 @@ import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
 import { BeautifyModule } from "./libs/beautify.js";
-// import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs";
+import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs";
 // prevent load mgta-js cache
-import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs?v=1";
+// import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs?v=1";
 
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
