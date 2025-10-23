@@ -173,7 +173,7 @@ var onKeydown = function(e) {
 var onKeyup = function(e) {
   const mtga = this.parent;
   const keydownState = mtga._keydownState;
-  mtga._clearKeydownState();
+  mtga._removeKeydownState();
   if (!keydownState) {
     return;
   }
@@ -718,8 +718,6 @@ var onKeyup2 = function(e) {
     return;
   }
   this.stop(true);
-  const mtga = this.parent;
-  const el = this.parent.element;
   const requestId = this._requestId + 1;
   const chunkSize = this._chunkSize;
   const result = [];
@@ -730,7 +728,7 @@ var onKeyup2 = function(e) {
   };
   this._requestId = requestId;
   this._stop = stop;
-  const query = this.parser.call(this, el);
+  const query = this.parser.call(this, e);
   const text = query.body;
   let candidates = [];
   if (text) {
@@ -796,7 +794,8 @@ var AutoCompleteModule = class _AutoCompleteModule extends MTGAModule {
   static name = "AutoComplete";
   static defaults = {
     chunkSize: 100,
-    parser: function(el) {
+    parser: function(e) {
+      const el = e.target;
       const parts = el.value.split(/[,.․‧・｡。{}()<>[\]\\/|'"`!?]|\r\n|\r|\n/);
       const index = el.selectionStart;
       let selectionStart = 0, selectionEnd = 0;
@@ -1157,7 +1156,7 @@ var MTGA = class {
         await m.onKeydownAsync?.call(m, e);
       }
       if (e.defaultPrevented) {
-        this._clearKeydownState();
+        this._removeKeydownState();
       } else if (![
         "Meta",
         "Control",
@@ -1201,7 +1200,7 @@ var MTGA = class {
     this.element.addEventListener("focus", this._focusEvent, true);
     this.element.addEventListener("blur", this._blurEvent, true);
   }
-  clearEvents() {
+  removeEvents() {
     this.element.removeEventListener("keydown", this._keydownEvent);
     this.element.removeEventListener("keyup", this._keyupEvent);
     this.element.removeEventListener("paste", this._pasteEvent);
@@ -1249,7 +1248,7 @@ var MTGA = class {
       key: e.key
     };
   }
-  _clearKeydownState() {
+  _removeKeydownState() {
     this._keydownState = null;
   }
 };

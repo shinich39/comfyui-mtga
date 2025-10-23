@@ -4,9 +4,15 @@ import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
 import { BeautifyModule } from "./libs/beautify.js";
-import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs";
-// prevent load mgta-js cache
-// import { MTGA, AutoPairModule, AutoCompleteModule, LineBreakModule, HistoryModule, LineRemoveModule } from "./libs/mtga.mjs?v=1";
+import {
+  MTGA, 
+  AutoPairModule, 
+  AutoCompleteModule, 
+  LineBreakModule, 
+  HistoryModule, 
+  LineRemoveModule
+  
+} from "./libs/mtga.mjs?v=2"; // prevent load mgta-js cache like "./libs/mtga.mjs?v=2";
 
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
@@ -119,11 +125,9 @@ function init(elem) {
       index = 0;
 
   const origParser = ac.parser;
-  ac.parser = function (el) {
-    // console.log("parser", el);
-    const r = origParser(el);
-    // r.body = r.body.toLowerCase().replace(/\s/g, "_");
-    r.body = r.body.replace(/\s/g, "_");
+  ac.parser = function (e) {
+    // console.log("parser", e);
+    const r = origParser(e);
 
     hide(false);
 
@@ -131,6 +135,18 @@ function init(elem) {
       this.stop(true);
       return r;
     }
+
+    // prevent auto-complete with backspace key if it is not the last character.
+    const el = e.target;
+    const isBackspace = e.key.toLowerCase() === "backspace";
+    const isLastChar = el.selectionStart === r.head.length + r.body.length;
+    if (isBackspace && !isLastChar) {
+      this.stop(true);
+      return r;
+    }
+
+    // r.body = r.body.toLowerCase().replace(/\s/g, "_");
+    r.body = r.body.replace(/\s/g, "_");
 
     return r;
   }
