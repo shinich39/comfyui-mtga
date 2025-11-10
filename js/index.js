@@ -11,7 +11,6 @@ import {
   LineBreakModule, 
   HistoryModule, 
   LineRemoveModule
-  
 } from "./libs/mtga.mjs?v=2"; // prevent load mgta-js cache like "./libs/mtga.mjs?v=2";
 
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
@@ -85,7 +84,7 @@ function init(elem) {
   elem.style.wordBreak = "break-all";
 
   const mtga = new MTGA(elem);
-  mtga.setModule(new BeautifyModule(mtga));
+  // mtga.setModule(new BeautifyModule(mtga));
   const his = mtga.getModule(HistoryModule.name);
   const ac = mtga.getModule(AutoCompleteModule.name);
   const lb = mtga.getModule(LineBreakModule.name);

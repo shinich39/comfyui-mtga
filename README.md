@@ -16,7 +16,7 @@ Make Textarea Great Again
 - LinePaste: Ctrl+V with cursor on a character after single line copy e.g., "blahblah...\n"
 - LineRemove: Ctrl+Shift+K
 
-- Beautify: Ctrl+B, Ctrl+Shift+B
+<!-- - Beautify: Ctrl+B, Ctrl+Shift+B -->
 - Control weight: Ctrl+ArrowUp, Ctrl+ArrowDown
 
 ## AutoComplete
