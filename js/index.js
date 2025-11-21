@@ -26,7 +26,6 @@ const Settings = {
   MaxItemCount: 3939,
   MinDanbooruCount: 39,
   Suffix: ",",
-  StartsWithFirstCharacter: false,
   ShowNumber: false,
   ShowCount: true,
   ShowCategory: false,
@@ -507,14 +506,6 @@ app.registerExtension({
       }
     },
     {
-      id: 'shinich39.MTGA.StartsWithFirstCharacter',
-      category: ['MTGA', 'Typing is so boring', 'StartsWithFirstCharacter'],
-      name: 'Starts with first character',
-      type: 'boolean',
-      tooltip: 'Starts with first character, refresh required',
-      defaultValue: Settings.StartsWithFirstCharacter,
-    },
-    {
       id: 'shinich39.MTGA.Suffix',
       category: ['MTGA', 'Typing is so boring', 'Suffix'],
       name: 'Suffix',
@@ -583,7 +574,6 @@ app.registerExtension({
 
         const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount') || Settings.MinDanbooruCount;
         const suffix = app.extensionManager.setting.get('shinich39.MTGA.Suffix') || "";
-        const matchFirstChar = app.extensionManager.setting.get('shinich39.MTGA.StartsWithFirstCharacter');
 
         const convertedTags = loadedTags
           .filter((arr) => {
@@ -606,6 +596,8 @@ app.registerExtension({
         Tags.push(...convertedTags);
 
         console.time("[shinich39-mtga] indexing...");
+
+        // type indexing
 
         Indexes.push({
           pattern: new RegExp("^@"),
@@ -631,12 +623,6 @@ app.registerExtension({
 
           if (found) {
             found.tags.push(tag);
-          } // starts with first character
-          else if (matchFirstChar && !(ch === "@" || ch === "#")) {
-            Indexes.push({
-              pattern: new RegExp("^"+escaped),
-              tags: [tag],
-            });
           }
 
           if (type === "artist") {
@@ -644,31 +630,20 @@ app.registerExtension({
           } else if (type === "character") {
             Indexes[1].tags.push(tag);
           }
-
-          // if (type === "artist" || type === "character") {
-          //   const prefix = type === "artist" ? "@" : "#";
-
-          //   const found = Indexes.find(({ pattern }) => 
-          //     pattern.test(prefix+key));
-
-          //   if (found) {
-          //     found.tags.push(tag);
-          //   } else if (!(ch === "@" || ch === "#")) {
-          //     Indexes.push({
-          //       pattern: new RegExp("^"+prefix+escaped),
-          //       tags: [tag],
-          //     });
-          //   }
-          // }
         }
 
-        // let models = {
-        //   "checkpoints": [],
-        //   "clips": [],
-        //   "loras": [],
-        //   "vaes": [],
-        //   "embeddings": [],
-        // }
+        // character indexing
+
+        const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
+
+        for (const ch of alphabet) {
+          Indexes.push({
+            pattern: new RegExp("^" + ch),
+            tags: Tags.filter((t) => t.key.indexOf(ch) > -1),
+          });
+        }
+
+        // local model indexing
 
         try {
           const models = await getModels();
