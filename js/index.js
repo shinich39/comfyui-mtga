@@ -4,6 +4,7 @@ import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
 import { BeautifyModule } from "./libs/beautify.js";
+import { getDiffs, matchStrings } from "./libs/diff.js";
 import {
   MTGA, 
   AutoPairModule, 
@@ -11,7 +12,7 @@ import {
   LineBreakModule, 
   HistoryModule, 
   LineRemoveModule
-} from "./libs/mtga.mjs?v=2"; // prevent load mgta-js cache like "./libs/mtga.mjs?v=2";
+} from "./libs/mtga.mjs?v=3"; // prevent load mgta-js cache like "./libs/mtga.mjs?v=2";
 
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
@@ -36,6 +37,8 @@ const Indexes = [];
 
 const COLOR1 = "#ddd";
 const COLOR2 = "#333";
+const COLOR3 = "#ffff00";
+const COLOR4 = "#00FF00";
 
 const listEl = document.createElement("div");
 listEl.style.position = "absolute";
@@ -46,6 +49,8 @@ listEl.style.fontFamily = "monospace";
 listEl.style.borderTop = "1px solid";
 listEl.style.borderLeft = "1px solid";
 document.body.appendChild(listEl);
+
+let listHeaderEl;
 
 document.addEventListener("mousemove", (e) => {
   const mouseX = e.clientX;
@@ -131,7 +136,7 @@ function init(elem) {
     hide(false);
 
     if (r.body.length < 1 || r.body.length > 39) {
-      this.stop(true);
+      this.kill();
       return r;
     }
 
@@ -140,7 +145,7 @@ function init(elem) {
     const isBackspace = e.key.toLowerCase() === "backspace";
     const isLastChar = el.selectionStart === r.head.length + r.body.length;
     if (isBackspace && !isLastChar) {
-      this.stop(true);
+      this.kill();
       return r;
     }
 
@@ -150,59 +155,58 @@ function init(elem) {
     return r;
   }
 
-  ac.filter = function (chunk, result, i, candidates) {
-    // console.log("filter", chunk);
-    const { tag, query } = chunk;
+  ac.filter = function (query, tag, i, tags) {
+    // console.log("filter", query, tag);
+    const result = this.result;
     const a = query.body;
     const b = tag.key;
 
     if (result.length >= Settings.MaxItemCount) {
-      this.stop(true);
+      this.stop();
       return false;
     }
 
     if (a.startsWith("@")) {
-      const { score } = ac.compare(a.substring(1), b);
-      return score >= a.length - 1;
+      const { matches } = matchStrings(a.substring(1), b);
+      return matches >= a.length - 1;
     }
 
     if (a.startsWith("#")) {
-      const { score } = ac.compare(a.substring(1), b);
-      return score >= a.length - 1;
+      const { matches } = matchStrings(a.substring(1), b);
+      return matches >= a.length - 1;
     }
 
     if (a.startsWith("$$$")) {
-      const { score } = ac.compare(a.substring(3), b);
-      return score >= a.length - 3;
+      const { matches } = matchStrings(a.substring(3), b);
+      return matches >= a.length - 3;
     }
 
     if (a.startsWith("$$")) {
-      const { score } = ac.compare(a.substring(2), b);
-      return score >= a.length - 2;
+      const { matches } = matchStrings(a.substring(2), b);
+      return matches >= a.length - 2;
     }
 
     if (a.startsWith("$")) {
-      const { score } = ac.compare(a.substring(1), b);
-      return score >= a.length - 1;
+      const { matches } = matchStrings(a.substring(1), b);
+      return matches >= a.length - 1;
     }
 
-    const { score } = ac.compare(a, b);
-    
-    return score >= a.length;
+    const { matches } = matchStrings(a, b);
+    return matches >= a.length;
 
     // 100000 items, 5332ms
-    // return score >= a.length;
+    // return matches >= a.length;
 
     // 100000 items, 4529ms
     // return b.indexOf(a) > -1;
   }
 
   const load = () => {
-    const chunk = items[index]?.chunk;
-    if (chunk) {
+    const tag = items[index]?.tag;
+    if (tag && ac.query) {
       // remove double commas
-      chunk.query.tail = chunk.query.tail.replace(/^,/, "");
-      ac.set(chunk);
+      ac.query.tail = ac.query.tail.replace(/^,/, "");
+      ac.set(tag);
     }
   }
 
@@ -220,7 +224,7 @@ function init(elem) {
       if (i >= min && i < max) {
         el.style.display = "";
         if (i === index) {
-          el.style.color = "#00FF00";
+          el.style.color = COLOR4;
           el.style.backgroundColor = "#000";
         }
       } else {
@@ -256,8 +260,17 @@ function init(elem) {
     index = 0;
     listEl.innerHTML = "";
     listEl.style.visibility = "hidden";
+
+    // create a new header
+    listHeaderEl = document.createElement("div");
+    listHeaderEl.style.padding = "2px 4px";
+    listHeaderEl.style.borderRight = "1px solid " + COLOR1;
+    listHeaderEl.style.borderBottom = "1px solid " + COLOR1;
+    listHeaderEl.style.color = COLOR3;
+    listEl.appendChild(listHeaderEl);
+
     if (kill) {
-      ac.stop(true);
+      ac.kill();
     }
   }
 
@@ -373,19 +386,24 @@ function init(elem) {
     }
   }
 
-  const onData = function (chunks, result) {
+  const onData = function (chunks) {
     // if (chunks.length) {
-    //   console.log("onData", chunks, result);
+    //   console.log("onData", chunks);
     // }
+
+    const result = this.result;
+    const query = this.query;
+
+    // write header
+    listHeaderEl.innerHTML = `Searching ${result.length} tags...`;
 
     // render items
     for (let i = 0; i < chunks.length; i++) {
       const idx = i + 1;
-      const chunk = chunks[i];
-      const { tag, query } = chunk;
-      const { match } = (query.body.startsWith("$") || query.body.startsWith("$$") || query.body.startsWith("$$$"))
-        ? this.compare(query.body.replace(/^\$+/, ""), tag.key)
-        : this.compare(query.body, tag.key);
+      const tag = chunks[i];
+      const diffs = (query.body.startsWith("$") || query.body.startsWith("$$") || query.body.startsWith("$$$"))
+        ? getDiffs(query.body.replace(/^\$+/, ""), tag.key)
+        : getDiffs(query.body, tag.key);
 
       const itemEl = document.createElement("div");
       itemEl.style.padding = "2px 4px";
@@ -406,13 +424,13 @@ function init(elem) {
         html += " ";
       }
 
-      for (const [type, value] of match) {
+      for (const [type, value] of diffs) {
         if (type === -1) {
           continue;
         }
 
         html += type === 0
-          ? `<span style="background-color: yellow; color: black;">${value}</span>` 
+          ? `<span style="background-color: ${COLOR3}; color: black;">${value}</span>` 
           : `<span>${value}</span>`;
       }
 
@@ -428,7 +446,7 @@ function init(elem) {
       // });
 
       items.push({
-        chunk,
+        tag,
         element: itemEl,
       });
 
@@ -442,10 +460,17 @@ function init(elem) {
     render();
   }
 
+  const onEnd = function() {
+    const result = this.result;
+    const query = this.query;
+    listHeaderEl.innerHTML = `${result.length} tags found.`;
+  }
+
   elem.addEventListener("keydown", keydownHandler);
   elem.addEventListener("click", () => hide());
   elem.addEventListener("blur", () => hide());
   ac.onData = onData;
+  ac.onEnd = onEnd;
 }
 
 app.registerExtension({

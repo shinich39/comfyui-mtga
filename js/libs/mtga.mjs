@@ -64,67 +64,6 @@ var parseKeyboardEvent = function(e) {
     ctrlKey
   };
 };
-function compareString(from, to) {
-  const dp = Array.from(
-    { length: from.length + 1 },
-    () => Array(to.length + 1).fill(0)
-  );
-  for (let i2 = 1; i2 <= from.length; i2++) {
-    for (let j2 = 1; j2 <= to.length; j2++) {
-      if (from[i2 - 1] === to[j2 - 1]) {
-        dp[i2][j2] = dp[i2 - 1][j2 - 1] + 1;
-      } else {
-        dp[i2][j2] = Math.max(dp[i2 - 1][j2], dp[i2][j2 - 1]);
-      }
-    }
-  }
-  const result = [];
-  let score = 0;
-  let i = from.length, j = to.length;
-  let currentType = null;
-  let buffer = [];
-  const flush = function() {
-    if (currentType !== null && buffer.length > 0) {
-      result.push([currentType, buffer.reverse().join("")]);
-    }
-    currentType = null;
-    buffer = [];
-  };
-  while (i > 0 || j > 0) {
-    const a = from[i - 1];
-    const b = to[j - 1];
-    if (i > 0 && j > 0 && a === b) {
-      if (currentType !== 0) {
-        flush();
-      }
-      currentType = 0;
-      buffer.push(a);
-      score++;
-      i--;
-      j--;
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      if (currentType !== 1) {
-        flush();
-      }
-      currentType = 1;
-      buffer.push(b);
-      j--;
-    } else if (i > 0) {
-      if (currentType !== -1) {
-        flush();
-      }
-      currentType = -1;
-      buffer.push(a);
-      i--;
-    }
-  }
-  flush();
-  return {
-    accuracy: score * 2 / (from.length + to.length),
-    score,
-    match: result.reverse()
-  };
-}
 function getIndent(pairs, indentUnit, rows) {
   const createIndent = function(unit, size) {
     return unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
@@ -700,14 +639,6 @@ var AutoPairModule = class _AutoPairModule extends MTGAModule {
 };
 
 // src/modules/auto-complete.ts
-var findIndex = function(indexes, value) {
-  for (const index of indexes) {
-    const pattern = index.pattern;
-    if (pattern.test(value)) {
-      return index;
-    }
-  }
-};
 var onKeyup2 = function(e) {
   if (e.defaultPrevented) {
     return;
@@ -717,53 +648,51 @@ var onKeyup2 = function(e) {
   if (!isValid) {
     return;
   }
-  this.stop(true);
-  const requestId = this._requestId + 1;
-  const chunkSize = this._chunkSize;
-  const result = [];
+  this.kill();
+  const chunkSize = this.chunkSize;
   let isStopped = false, isKilled = false, i = 0;
   const stop = (kill) => {
     isStopped = true;
     isKilled = kill || false;
   };
-  this._requestId = requestId;
   this._stop = stop;
   const query = this.parser.call(this, e);
-  const text = query.body;
-  let candidates = [];
-  if (text) {
-    const index = findIndex(this.indexes, text);
-    if (index) {
-      candidates = index.tags;
-    } else {
-      candidates = this.tags;
-    }
+  const text = query?.body;
+  if (!text) {
+    this.query = null;
+    this.candidates = [];
+    this.result = [];
+    return;
   }
+  const candidates = this.getIndex(text)?.tags || this.tags;
+  const result = [];
+  this.query = query;
+  this.candidates = candidates;
+  this.result = result;
   const processChunk = () => {
     const chunks = [];
     let j = i + chunkSize;
     while (i < j && i < candidates.length) {
       const tag = candidates[i];
-      const chunk = {
-        tag,
-        query
-      };
-      const ok = this.filter?.call(this, chunk, result, i, candidates);
+      if (isKilled || isStopped) {
+        break;
+      }
+      const ok = this.filter?.call(this, query, tag, i, candidates);
       if (ok) {
-        chunks.push(chunk);
-        result.push(chunk);
+        chunks.push(tag);
+        result.push(tag);
       }
       i++;
     }
-    if (isKilled || this._requestId !== requestId) {
+    if (isKilled) {
       return;
     }
     if (isStopped || i >= candidates.length) {
-      this.onData?.call(this, chunks, result);
-      this.onEnd?.call(this, result);
+      this.onData?.call(this, chunks);
+      this.onEnd?.call(this);
       return;
     }
-    this.onData?.call(this, chunks, result);
+    this.onData?.call(this, chunks);
     setTimeout(processChunk, 0);
   };
   processChunk();
@@ -771,23 +700,27 @@ var onKeyup2 = function(e) {
 var AutoCompleteModule = class _AutoCompleteModule extends MTGAModule {
   tags;
   indexes;
+  chunkSize;
+  query;
+  candidates;
+  result;
   parser;
   filter;
   onData;
   onEnd;
-  _requestId;
-  _chunkSize;
   _stop;
   constructor(parent) {
     super(parent, _AutoCompleteModule.name, 1);
     this.tags = [];
     this.indexes = [];
+    this.chunkSize = _AutoCompleteModule.defaults.chunkSize;
+    this.query = null;
+    this.candidates = [];
+    this.result = [];
     this.parser = _AutoCompleteModule.defaults.parser;
     this.filter = _AutoCompleteModule.defaults.filter;
     this.onData = () => void 0;
     this.onEnd = () => void 0;
-    this._requestId = 0;
-    this._chunkSize = _AutoCompleteModule.defaults.chunkSize;
     this._stop = () => void 0;
   }
   onKeyup = onKeyup2;
@@ -819,31 +752,39 @@ var AutoCompleteModule = class _AutoCompleteModule extends MTGAModule {
         tail
       };
     },
-    filter: function(chunk, index, candidates, result) {
-      const { tag, query } = chunk;
+    filter: function(query, tag, index, tags) {
       const a = query.body;
       const b = tag.key;
       return b.indexOf(a) > -1;
     }
   };
-  compare(a, b) {
-    return compareString(a, b);
+  getIndex(value) {
+    return this.indexes.find((i) => typeof i.pattern === "string" ? i.pattern === value : i.pattern.test(value));
   }
-  stop(kill) {
+  stop() {
     const stop = this._stop;
-    stop?.(kill);
+    stop?.(false);
   }
-  set(chunk) {
-    const short = chunk.query.head.length + chunk.tag.value.length;
-    const long = chunk.query.head.length + chunk.tag.value.length;
-    const value = chunk.query.head + chunk.tag.value + chunk.query.tail;
-    const state = {
+  kill() {
+    const stop = this._stop;
+    stop?.(true);
+  }
+  set(tag, query) {
+    const mtga = this.parent;
+    if (!query) {
+      query = this.query;
+    }
+    if (!query) {
+      throw new Error("Query not found");
+    }
+    const short = query.head.length + tag.value.length;
+    const long = query.head.length + tag.value.length;
+    const value = query.head + tag.value + query.tail;
+    mtga.setState({
       short,
       long,
       value
-    };
-    const mtga = this.parent;
-    mtga.setState(state);
+    });
   }
 };
 
