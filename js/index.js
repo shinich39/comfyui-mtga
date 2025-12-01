@@ -21,9 +21,37 @@ AutoPairModule.defaults.pairs = {
   "(": ")",
 }
 
+AutoCompleteModule.defaults.parser = function(e) {
+  const el = e.target;
+  const parts = el.value.split(/[,.․‧・｡。{}()<>[\]\\/|]|\r\n|\r|\n/);
+  const index = el.selectionStart;
+  let selectionStart = 0, selectionEnd = 0;
+  for (const part of parts) {
+    selectionEnd = selectionStart + part.length;
+    if (index >= selectionStart && index <= selectionEnd) {
+      break;
+    }
+    selectionStart = selectionEnd + 1;
+  }
+  let head = el.value.substring(0, selectionStart),
+      body = el.value.substring(selectionStart, selectionEnd),
+      tail = el.value.substring(selectionEnd);
+  const match = body.match(/^(\s*)(.*?)(\s*)$/);
+  if (match) {
+    head = head + (match[1] || "");
+    body = match[2];
+    tail = (match[3] || "") + tail;
+  }
+  return {
+    head,
+    body,
+    tail
+  };
+}
+
 const Settings = {
   MaxVisibleItemCount: 11,
-  MaxItemCount: 3939,
+  MaxResultItemCount: 3939,
   MinDanbooruCount: 39,
   Suffix: ",",
   ShowNumber: false,
@@ -160,7 +188,7 @@ function init(elem) {
     const a = query.body;
     const b = tag.key;
 
-    if (result.length >= Settings.MaxItemCount) {
+    if (result.length >= Settings.MaxResultItemCount) {
       this.stop();
       return false;
     }
@@ -521,11 +549,11 @@ app.registerExtension({
       defaultValue: Settings.MaxVisibleItemCount,
     },
     {
-      id: 'shinich39.MTGA.MaxItemCount',
-      category: ['MTGA', 'Typing is so boring', 'MaxItemCount'],
-      name: 'Max item count',
+      id: 'shinich39.MTGA.MaxResultItemCount',
+      category: ['MTGA', 'Typing is so boring', 'MaxResultItemCount'],
+      name: 'Max result count',
       type: 'number',
-      defaultValue: Settings.MaxItemCount,
+      defaultValue: Settings.MaxResultItemCount,
     },
     {
       id: 'shinich39.MTGA.MinDanbooruCount',
