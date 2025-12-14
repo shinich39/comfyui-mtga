@@ -57,7 +57,10 @@ const Settings = {
   ShowNumber: false,
   ShowCount: true,
   ShowCategory: false,
+  "Nodes2.0": false,
 }
+
+const eventMap = new WeakSet();
 
 const Tags = [];
 const Indexes = [];
@@ -563,29 +566,82 @@ app.registerExtension({
       tooltip: 'Refresh required',
       defaultValue: Settings.MinDanbooruCount,
     },
+    {
+      id: 'shinich39.MTGA.Nodes2.0',
+      category: ['MTGA', 'Typing is so boring', 'Nodes2.0'],
+      name: 'Nodes 2.0',
+      type: 'boolean',
+      tooltip: 'Refresh required',
+      defaultValue: Settings["Nodes2.0"],
+    },
   ],
   init() {
-    const STRING = ComfyWidgets.STRING;
-    ComfyWidgets.STRING = function (node, inputName, inputData) {
-      const r = STRING.apply(this, arguments);
+    if (!app.extensionManager.setting.get('shinich39.MTGA.Nodes2.0')) {
+      const STRING = ComfyWidgets.STRING;
+      ComfyWidgets.STRING = function (node, inputName, inputData) {
+        const r = STRING.apply(this, arguments);
 
-      if (!inputData[1]?.multiline) {
-        return r;
-      }
+        if (!inputData[1]?.multiline) {
+          return r;
+        }
+        
+        if (!r.widget?.element) {
+          return r;
+        }
       
-      if (!r.widget?.element) {
+        const elem = r.widget.element;
+
+        init(elem);
+
         return r;
-      }
-    
-      const elem = r.widget.element;
+      };
+    } // Nodes 2.0
+    else {
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          for (const nodeEl of mutation.addedNodes) {
+            try {
+              if (!nodeEl.getAttribute) {
+                continue;
+              }
 
-      init(elem);
+              // const nodeType = nodeEl.getAttribute("node-type");
+              const nodeId = nodeEl.getAttribute("node-id");
+              const node = app.graph.getNodeById(nodeId);
 
-      return r;
-    };
+              if (!node) {
+                continue;
+              }
+
+              // console.log(node.id, node.type);
+
+              for (const el of nodeEl.children) {
+                if (el.tagName !== "TEXTAREA") {
+                  continue;
+                }
+
+                if (eventMap.has(el)) {
+                  continue;
+                }
+
+                eventMap.add(el);
+
+                // console.log(node.id, el);
+
+                init(el);
+              }
+            } catch(err) {
+
+            }
+          }
+        }
+      });
+
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+
 	},
   setup() {
-
     // bugfix: don't interrupt workflow loading
     setTimeout(async () => {
       try {
