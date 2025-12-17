@@ -4,6 +4,8 @@ Make Textarea Great Again
 
 ## Usage  
 
+Support nodes 2.0
+
 - Undo, Redo: Ctrl+Z, Ctrl+Shift+Z
 - Comment: Ctrl+/
 - Indent: Tab, Shift+Tab

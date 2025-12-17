@@ -1,3 +1,22 @@
+// src/types/module.ts
+var MTGAModule = class {
+  parent;
+  name;
+  index;
+  onKeydown;
+  onKeydownAsync;
+  onKeyup;
+  onKeyupAsync;
+  onPaste;
+  onPasteAsync;
+  constructor(parent, name, index = 9999) {
+    this.parent = parent;
+    this.name = name;
+    this.index = index;
+  }
+  static defaults = {};
+};
+
 // src/types/state.ts
 var getState = function(el, withValue) {
   const isReversed = el.selectionStart > el.selectionEnd;
@@ -30,25 +49,6 @@ var setState = function(el, state) {
     el.setSelectionRange(state.long, state.short, state.dir);
   }
   el.focus();
-};
-
-// src/types/module.ts
-var MTGAModule = class {
-  parent;
-  name;
-  index;
-  onKeydown;
-  onKeydownAsync;
-  onKeyup;
-  onKeyupAsync;
-  onPaste;
-  onPasteAsync;
-  constructor(parent, name, index = 9999) {
-    this.parent = parent;
-    this.name = name;
-    this.index = index;
-  }
-  static defaults = {};
 };
 
 // src/modules/utils.ts
@@ -472,7 +472,7 @@ var isClosing = function(pairs, value) {
   return Object.values(pairs).includes(value);
 };
 var isPair = function(pairs, opening, closing) {
-  return pairs[opening] && pairs[opening] === closing;
+  return !!pairs[opening] && pairs[opening] === closing;
 };
 var getClosing = function(pairs, value) {
   return pairs[value];
@@ -1065,7 +1065,8 @@ var LinePasteModule = class _LinePasteModule extends MTGAModule {
 };
 
 // src/mtga.ts
-var MTGA = class {
+var MTGAMap = /* @__PURE__ */ new WeakMap();
+var MTGA13 = class _MTGA {
   element;
   modules;
   moduleOrder;
@@ -1075,7 +1076,23 @@ var MTGA = class {
   _pasteEvent;
   _focusEvent;
   _blurEvent;
+  static exists(el) {
+    return !!this.getMTGA(el);
+  }
+  static getMTGA(el) {
+    return MTGAMap.get(el);
+  }
+  static defaults = {
+    eventListenerOptions: {
+      capture: true,
+      once: false,
+      passive: false
+    }
+  };
   constructor(el) {
+    if (_MTGA.exists(el)) {
+      throw new Error("Already initialized");
+    }
     this.element = el;
     this.moduleOrder = [];
     this.modules = {};
@@ -1125,21 +1142,22 @@ var MTGA = class {
     this._focusEvent = (e) => {
       setTimeout(() => {
         this.addHistory(false);
-        this.element.addEventListener("pointerup", _selectionEvent, true);
+        this.element.addEventListener("pointerup", _selectionEvent, _MTGA.defaults.eventListenerOptions);
       }, 0);
     };
     this._blurEvent = (e) => {
-      this.element.removeEventListener("pointerup", _selectionEvent, true);
+      this.element.removeEventListener("pointerup", _selectionEvent, _MTGA.defaults.eventListenerOptions);
     };
     this.setEvents();
     this.setModuleOrder();
+    MTGAMap.set(el, this);
   }
   setEvents() {
-    this.element.addEventListener("keydown", this._keydownEvent, true);
-    this.element.addEventListener("keyup", this._keyupEvent, true);
-    this.element.addEventListener("paste", this._pasteEvent, true);
-    this.element.addEventListener("focus", this._focusEvent, true);
-    this.element.addEventListener("blur", this._blurEvent, true);
+    this.element.addEventListener("keydown", this._keydownEvent, _MTGA.defaults.eventListenerOptions);
+    this.element.addEventListener("keyup", this._keyupEvent, _MTGA.defaults.eventListenerOptions);
+    this.element.addEventListener("paste", this._pasteEvent, _MTGA.defaults.eventListenerOptions);
+    this.element.addEventListener("focus", this._focusEvent, _MTGA.defaults.eventListenerOptions);
+    this.element.addEventListener("blur", this._blurEvent, _MTGA.defaults.eventListenerOptions);
   }
   removeEvents() {
     this.element.removeEventListener("keydown", this._keydownEvent);
@@ -1205,6 +1223,6 @@ export {
   LineCutModule,
   LinePasteModule,
   LineRemoveModule,
-  MTGA,
+  MTGA13 as MTGA,
   MTGAModule
 };

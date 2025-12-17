@@ -12,7 +12,7 @@ import {
   LineBreakModule, 
   HistoryModule, 
   LineRemoveModule
-} from "./libs/mtga.mjs?v=3"; // prevent load mgta-js cache like "./libs/mtga.mjs?v=2";
+} from "./libs/mtga.mjs?v=20251217"; // prevent load mgta-js cache like "./libs/mtga.mjs?v=2";
 
 // import getCaretCoordinates from "./libs/textarea-caret-position.js";
 
@@ -57,7 +57,6 @@ const Settings = {
   ShowNumber: false,
   ShowCount: true,
   ShowCategory: false,
-  "Nodes2.0": false,
 }
 
 const eventMap = new WeakSet();
@@ -116,6 +115,11 @@ async function getModels() {
 }
 
 function init(elem) {
+  if (MTGA.exists(elem)) {
+    // console.warn("Already initialized");
+    return;
+  }
+
   elem.style.wordBreak = "break-all";
 
   const mtga = new MTGA(elem);
@@ -543,6 +547,9 @@ app.registerExtension({
       type: 'string',
       tooltip: 'Refresh required',
       defaultValue: Settings.Suffix,
+      onChange: (v) => {
+        Settings.Suffix = v;
+      }
     },
     {
       id: 'shinich39.MTGA.MaxVisibleItemCount',
@@ -550,6 +557,9 @@ app.registerExtension({
       name: 'Max visible item count',
       type: 'number',
       defaultValue: Settings.MaxVisibleItemCount,
+      onChange: (v) => {
+        Settings.MaxVisibleItemCount = v;
+      }
     },
     {
       id: 'shinich39.MTGA.MaxResultItemCount',
@@ -557,6 +567,9 @@ app.registerExtension({
       name: 'Max result count',
       type: 'number',
       defaultValue: Settings.MaxResultItemCount,
+      onChange: (v) => {
+        Settings.MaxResultItemCount = v;
+      }
     },
     {
       id: 'shinich39.MTGA.MinDanbooruCount',
@@ -565,18 +578,14 @@ app.registerExtension({
       type: 'number',
       tooltip: 'Refresh required',
       defaultValue: Settings.MinDanbooruCount,
-    },
-    {
-      id: 'shinich39.MTGA.Nodes2.0',
-      category: ['MTGA', 'Typing is so boring', 'Nodes2.0'],
-      name: 'Nodes 2.0',
-      type: 'boolean',
-      tooltip: 'Refresh required',
-      defaultValue: Settings["Nodes2.0"],
+      onChange: (v) => {
+        Settings.MinDanbooruCount = v;
+      }
     },
   ],
   init() {
-    if (!app.extensionManager.setting.get('shinich39.MTGA.Nodes2.0')) {
+    // Nodes 1.0
+    if (ComfyWidgets.STRING) {
       const STRING = ComfyWidgets.STRING;
       ComfyWidgets.STRING = function (node, inputName, inputData) {
         const r = STRING.apply(this, arguments);
@@ -595,51 +604,46 @@ app.registerExtension({
 
         return r;
       };
-    } // Nodes 2.0
-    else {
-      const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          for (const nodeEl of mutation.addedNodes) {
-            try {
-              if (!nodeEl.getAttribute) {
-                continue;
-              }
-
-              // const nodeType = nodeEl.getAttribute("node-type");
-              const nodeId = nodeEl.getAttribute("node-id");
-              const node = app.graph.getNodeById(nodeId);
-
-              if (!node) {
-                continue;
-              }
-
-              // console.log(node.id, node.type);
-
-              for (const el of nodeEl.children) {
-                if (el.tagName !== "TEXTAREA") {
-                  continue;
-                }
-
-                if (eventMap.has(el)) {
-                  continue;
-                }
-
-                eventMap.add(el);
-
-                // console.log(node.id, el);
-
-                init(el);
-              }
-            } catch(err) {
-
+    }
+    
+    // Nodes 2.0
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const nodeEl of mutation.addedNodes) {
+          try {
+            if (!nodeEl.getAttribute) {
+              continue;
             }
+
+            // const nodeType = nodeEl.getAttribute("node-type");
+            const nodeId = nodeEl.getAttribute("node-id");
+            const node = app.graph.getNodeById(nodeId);
+
+            if (!node) {
+              continue;
+            }
+
+            for (const el of nodeEl.children) {
+              if (el.tagName !== "TEXTAREA") {
+                continue;
+              }
+
+              if (eventMap.has(el)) {
+                continue;
+              }
+
+              eventMap.add(el);
+
+              init(el);
+            }
+          } catch(err) {
+            console.error(err);
           }
         }
-      });
+      }
+    });
 
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
-
+    observer.observe(document.body, { childList: true, subtree: true });
 	},
   setup() {
     // bugfix: don't interrupt workflow loading
