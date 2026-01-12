@@ -27,7 +27,7 @@ EMBEDDINGS = (
   *folder_paths.get_filename_list("embeddings"),
 )
 
-@PromptServer.instance.routes.get("/shinich39/comfyui-mtga/get-models")
+@PromptServer.instance.routes.get("/shinich39/comfyui-mtga/get-local-models")
 async def _get(request):
   try:
     return web.json_response({

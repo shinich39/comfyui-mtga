@@ -2,11 +2,11 @@
 @author: shinich39
 @title: comfyui-mtga
 @nickname: comfyui-mtga
-@version: 1.0.32
+@version: 1.0.33
 @description: Make Textarea Great Again
 """
 
-from .py import danbooru, model
+from .py import danbooru, civitai, model
 
 NODE_CLASS_MAPPINGS = {}
 

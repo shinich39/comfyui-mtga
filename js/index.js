@@ -50,9 +50,12 @@ AutoCompleteModule.defaults.parser = function(e) {
 }
 
 const Settings = {
+  DanbooruTags: true,
+  CivitaiTags: true,
   MaxVisibleItemCount: 11,
   MaxResultItemCount: 3939,
-  MinDanbooruCount: 39,
+  MinUsedCount: 39,
+  MaxTagLength: 39,
   Suffix: ",",
   ShowNumber: false,
   ShowCount: true,
@@ -88,8 +91,8 @@ document.addEventListener("mousemove", (e) => {
   listEl.style.left = (mouseX + 12) + "px";
 });
 
-async function getTags() {
-  const response = await api.fetchApi(`/shinich39/comfyui-mtga/get-tags`, {
+async function getDanbooruTags() {
+  const response = await api.fetchApi(`/shinich39/comfyui-mtga/get-danbooru-tags`, {
     method: "GET",
     headers: { "Content-Type": "application/json", },
   });
@@ -101,8 +104,21 @@ async function getTags() {
   return await response.json();
 }
 
-async function getModels() {
-  const response = await api.fetchApi(`/shinich39/comfyui-mtga/get-models`, {
+async function getCivitaiTags() {
+  const response = await api.fetchApi(`/shinich39/comfyui-mtga/get-civitai-tags`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json", },
+  });
+
+  if (response.status !== 200) {
+    throw new Error(response.statusText);
+  }
+
+  return await response.json();
+}
+
+async function getLocalModels() {
+  const response = await api.fetchApi(`/shinich39/comfyui-mtga/get-local-models`, {
     method: "GET",
     headers: { "Content-Type": "application/json", },
   });
@@ -141,6 +157,7 @@ function init(elem) {
     }
   })();
 
+  // Remove line to Ctrl + K 
   ;(() => {
     const origKeydown = lr.onKeydown;
     lr.onKeydown = function(e) {
@@ -572,14 +589,47 @@ app.registerExtension({
       }
     },
     {
-      id: 'shinich39.MTGA.MinDanbooruCount',
-      category: ['MTGA', 'Typing is so boring', 'MinDanbooruCount'],
-      name: 'Min danbooru count',
+      id: 'shinich39.MTGA.MinUsedCount',
+      category: ['MTGA', 'Typing is so boring', 'MinUsedCount'],
+      name: 'Min used count',
       type: 'number',
       tooltip: 'Refresh required',
-      defaultValue: Settings.MinDanbooruCount,
+      defaultValue: Settings.MinUsedCount,
       onChange: (v) => {
-        Settings.MinDanbooruCount = v;
+        Settings.MinUsedCount = v;
+      }
+    },
+    {
+      id: 'shinich39.MTGA.MaxTagLength',
+      category: ['MTGA', 'Typing is so boring', 'MaxTagLength'],
+      name: 'Max tag length',
+      type: 'number',
+      tooltip: 'Refresh required',
+      defaultValue: Settings.MaxTagLength,
+      onChange: (v) => {
+        Settings.MaxTagLength = v;
+      }
+    },
+    {
+      id: 'shinich39.MTGA.CivitaiTags',
+      category: ['MTGA', 'Typing is so boring', 'CivitaiTags'],
+      name: 'Enable civitai tags',
+      type: 'boolean',
+      tooltip: 'Refresh required',
+      defaultValue: Settings.CivitaiTags,
+      onChange: (v) => {
+        Settings.CivitaiTags = v;
+      }
+    },
+    {
+      id: 'shinich39.MTGA.DanbooruTags',
+      category: ['MTGA', 'Typing is so boring', 'DanbooruTags'],
+      name: 'Enable danbooru tags',
+      type: 'boolean',
+      tooltip: 'Refresh required',
+      defaultValue: Settings.DanbooruTags,
+      onChange: (v) => {
+        Settings.DanbooruTags = v;
       }
     },
   ],
@@ -649,9 +699,32 @@ app.registerExtension({
     // bugfix: don't interrupt workflow loading
     setTimeout(async () => {
       try {
-        const loadedTags = (await getTags())?.tags || [];
+        const minUsedCount = app.extensionManager.setting.get('shinich39.MTGA.MinUsedCount');
+        const maxTagLength = app.extensionManager.setting.get('shinich39.MTGA.MaxTagLength');
+        const suffix = app.extensionManager.setting.get('shinich39.MTGA.Suffix') ?? "";
+        const enableDanbooruTags = app.extensionManager.setting.get('shinich39.MTGA.DanbooruTags') || false;
+        const enableCivitaiTags = app.extensionManager.setting.get('shinich39.MTGA.CivitaiTags') || false;
 
-        console.log(`[shinich39-mtga] Danbooru tags loaded successfully: ${loadedTags.length}`);
+        let danbooruTags = [];
+        let civitaiTags = [];
+
+        if (enableDanbooruTags) {
+          try {
+            danbooruTags = (await getDanbooruTags())?.tags || [];
+            console.log(`[shinich39-mtga] Danbooru tags loaded successfully: ${danbooruTags.length}`);
+          } catch(err) {
+            console.log(`[shinich39-mtga] Failed to load danbooru tags: ${err.message}`);
+          }
+        }
+
+        if (enableCivitaiTags) {
+          try {
+            civitaiTags = (await getCivitaiTags())?.tags || [];
+            console.log(`[shinich39-mtga] Civitai tags loaded successfully: ${civitaiTags.length}`);
+          } catch(err) {
+            console.log(`[shinich39-mtga] Failed to load civitai tags: ${err.message}`);
+          }
+        }
 
         // [
         //   // [ NAME, TYPE, COUNT ],
@@ -660,30 +733,97 @@ app.registerExtension({
         //   ...
         // ]
 
-        const min = app.extensionManager.setting.get('shinich39.MTGA.MinDanbooruCount') || Settings.MinDanbooruCount;
-        const suffix = app.extensionManager.setting.get('shinich39.MTGA.Suffix') || "";
 
-        const convertedTags = loadedTags
-          .filter((arr) => {
-            const [name, type, count] = arr;
-            return count >= min;
-          })
-          .map((arr) => {
-            const [name, type, count] = arr;
-            return {
-              key: name,
-              value: name + suffix,
-              type,
-              count
-            };
-          })
-          .sort((a, b) => b.count - a.count);
+        // key, { key, value, type, count }
+        const tagMap = new Map();
 
-        console.log(`[shinich39-mtga] Tags filter with count >= ${min}: ${convertedTags.length}`);
+        // Add danbooru tags
+        for (const tag of danbooruTags) {
+          if (!Array.isArray(tag)) {
+            continue;
+          }
+
+          const [name, type, count] = tag;
+
+          if (typeof name !== "string" || typeof type !== "string" || typeof count !== "number") {
+            continue;
+          }
+
+          if (count < minUsedCount) {
+            continue;
+          }
+
+          const key = name.toLowerCase().trim().replace(/\s/g, "_");
+
+          if (!key) {
+            continue;
+          }
+
+          if (maxTagLength && key.length > maxTagLength) {
+            continue;
+          }
+
+          const newTag = {
+            key,
+            value: name + suffix,
+            type,
+            count
+          }
+
+          if (tagMap.has(newTag.key)) {
+            tagMap.get(newTag.key).count += newTag.count;
+          } else {
+            tagMap.set(newTag.key, newTag);
+          }
+        }
+
+        for (const tag of civitaiTags) {
+          if (typeof tag !== "object" || typeof tag.value !== "string" || typeof tag.count !== "number") {
+            continue;
+          }
+
+          const { value, count } = tag;
+
+          // Skip lora
+          if (value.startsWith("<")) {
+            continue;
+          }
+
+          if (count < minUsedCount) {
+            continue;
+          }
+
+          const key = value.toLowerCase().trim().replace(/\s/g, "_");
+
+          if (!key) {
+            continue;
+          }
+
+          if (maxTagLength && key.length > maxTagLength) {
+            continue;
+          }
+
+          const newTag = {
+            key,
+            value: key + suffix,
+            type: "general",
+            count,
+          }
+
+          if (tagMap.has(newTag.key)) {
+            tagMap.get(newTag.key).count += newTag.count;
+          } else {
+            tagMap.set(newTag.key, newTag);
+          }
+        }
+
+        const convertedTags = [...tagMap.values()].sort((a, b) => b.count - a.count);
+
+        console.log(`[shinich39-mtga] Filtered tags: ${convertedTags.length}`);
 
         Tags.push(...convertedTags);
 
-        console.time("[shinich39-mtga] indexing...");
+        console.time("[shinich39-mtga] Indexing...");
 
         // type indexing
 
@@ -722,9 +862,9 @@ app.registerExtension({
 
         // character indexing
 
-        const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
+        const alphabets = 'abcdefghijklmnopqrstuvwxyz'.split('');
 
-        for (const ch of alphabet) {
+        for (const ch of alphabets) {
           Indexes.push({
             pattern: new RegExp("^" + ch),
             tags: Tags.filter((t) => t.key.indexOf(ch) > -1),
@@ -734,7 +874,7 @@ app.registerExtension({
         // local model indexing
 
         try {
-          const models = await getModels();
+          const models = await getLocalModels();
           
           console.log(`[shinich39-mtga] ComfyUI models loaded successfully:\n`, models);
 
@@ -782,8 +922,9 @@ app.registerExtension({
           console.error(err);
         }
 
-        console.timeEnd("[shinich39-mtga] indexing...");
-        console.log("[shinich39-mtga] indexing result:", Indexes);
+        console.timeEnd("[shinich39-mtga] Indexing...");
+
+        console.log("[shinich39-mtga] Indexing result:", Indexes);
       } catch(err) {
         console.error(err);
       }

@@ -13,12 +13,12 @@ from aiohttp import web
 __DIRNAME = os.path.dirname(os.path.abspath(__file__))
 
 JSON_DIR_PATH = os.path.join(__DIRNAME, "..", "data")
-LATEST_PATH = os.path.join(JSON_DIR_PATH, "danbooru.latest.json")
-DATA_PATH = os.path.join(JSON_DIR_PATH, "danbooru.json")
+LATEST_PATH = os.path.join(JSON_DIR_PATH, "civitai.latest.json")
+DATA_PATH = os.path.join(JSON_DIR_PATH, "civitai.json")
 
-REPO_URL = "https://github.com/shinich39/danbooru-tags-json"
-LATEST_URL = "https://raw.githubusercontent.com/shinich39/danbooru-tags-json/refs/heads/main/dist/all.latest.json"
-DATA_URL = "https://raw.githubusercontent.com/shinich39/danbooru-tags-json/refs/heads/main/dist/all.json"
+REPO_URL = "https://github.com/shinich39/civitai-model-json"
+LATEST_URL = "https://raw.githubusercontent.com/shinich39/civitai-model-json/refs/heads/main/dist/latest.json"
+DATA_URL = "https://raw.githubusercontent.com/shinich39/civitai-model-json/refs/heads/main/dist/most-used-words.json"
 
 def get_remote_latest():
   try:
@@ -37,7 +37,7 @@ def get_local_latest():
     return None
 
 def get_data():
-  print(f"[comfyui-mtga] Update danbooru-tags-json...")
+  print(f"[comfyui-mtga] Update civitai-model-json...")
 
   if os.path.exists(JSON_DIR_PATH) == False:
     os.mkdir(JSON_DIR_PATH)
@@ -61,23 +61,30 @@ def get_data():
       print(f"[comfyui-mtga] No updates found: {local_time} = {remote_time}")
       return json.load(file)
     
-  # Save all.latest.json
+  # Save latest.json
   with open(LATEST_PATH, "w") as f:
     f.write(json.dumps(remote_data))
     f.close()
   
-  # Download all.json
+  # Download most-used-words.json
   print(f"[comfyui-mtga] New update available: {local_time} < {remote_time}")
-  print(f"[comfyui-mtga] Downloading all.json...")
+  print(f"[comfyui-mtga] Downloading most-used-words.json...")
 
   try:
     res = requests.get(DATA_URL)
+
+    # print(f"[comfyui-civitai-workflow] Decompressing checkpoints.json.gz...")
+    # with gzip.GzipFile(fileobj=io.BytesIO(res.content)) as f:
+    #   decompressed_data = f.read()
+    # text = decompressed_data.decode('utf-8')
+
     data = json.loads(res.text)
+
     with open(DATA_PATH, "w") as f:
       f.write(json.dumps(data))
       f.close()
 
-    print(f"[comfyui-mtga] all.json has been downloaded.")
+    print(f"[comfyui-mtga] most-used-words.json has been downloaded.")
 
     return data
   except Exception:
@@ -93,7 +100,7 @@ def get_data():
 
     return []
 
-@PromptServer.instance.routes.get("/shinich39/comfyui-mtga/get-danbooru-tags")
+@PromptServer.instance.routes.get("/shinich39/comfyui-mtga/get-civitai-tags")
 async def _get(request):
   try:
     tags = get_data()

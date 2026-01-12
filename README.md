@@ -24,6 +24,7 @@ Support nodes 2.0
 ## AutoComplete
 
 Artists, Characters, tags from Danbooru tags.  
+Word from Civitai metadata.  
 
 - Artists: Starts with "@"
 - Characters: Starts with "#"
@@ -36,3 +37,4 @@ Artists, Characters, tags from Danbooru tags.
 
 - [mtga-js](https://github.com/shinich39/mtga-js)
 - [danbooru-tags-json](https://github.com/shinich39/danbooru-tags-json)
+- [civitai-model-json](https://github.com/shinich39/civitai-model-json)
