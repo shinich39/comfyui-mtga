@@ -41,6 +41,5 @@ try {
   ].join(" && "));
 } catch(err) {
   console.error(err);
-  console.log(err.output[1].toString())
   process.exit(1);
 }
