@@ -12,9 +12,7 @@ import {
   LineBreakModule, 
   HistoryModule, 
   LineRemoveModule
-} from "./libs/mtga.mjs?v=20251217"; // prevent load mgta-js cache like "./libs/mtga.mjs?v=2";
-
-// import getCaretCoordinates from "./libs/textarea-caret-position.js";
+} from "./libs/mtga.mjs?v=20260314"; // prevent load mgta-js cache like "./libs/mtga.mjs?v=2";
 
 AutoPairModule.defaults.pairs = {
   "{": "}",

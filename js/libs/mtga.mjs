@@ -4,11 +4,8 @@ var MTGAModule = class {
   name;
   index;
   onKeydown;
-  onKeydownAsync;
   onKeyup;
-  onKeyupAsync;
   onPaste;
-  onPasteAsync;
   constructor(parent, name, index = 9999) {
     this.parent = parent;
     this.name = name;
@@ -17,8 +14,364 @@ var MTGAModule = class {
   static defaults = {};
 };
 
-// src/types/state.ts
-var getState = function(el, withValue) {
+// src/utils/event.ts
+var parseKeyboardEvent = (e) => {
+  const key = e.key;
+  const altKey = e.altKey;
+  const shiftKey = e.shiftKey;
+  const ctrlKey = e.ctrlKey || e.metaKey;
+  return {
+    key,
+    altKey,
+    shiftKey,
+    ctrlKey
+  };
+};
+
+// src/modules/auto-complete.ts
+var onKeyup = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = !ctrlKey && !altKey && (key.length === 1 || key === "Backspace");
+  if (!isValid) {
+    return;
+  }
+  this.kill();
+  const chunkSize = this.chunkSize;
+  let isStopped = false, isKilled = false, i = 0;
+  const stop = (kill) => {
+    isStopped = true;
+    isKilled = kill || false;
+  };
+  this._stop = stop;
+  const query = this.parser.call(this, e);
+  const text = query?.body;
+  if (!text) {
+    this.query = null;
+    this.candidates = [];
+    this.result = [];
+    return;
+  }
+  const candidates = this.getIndex(text)?.tags || this.tags;
+  const result = [];
+  this.query = query;
+  this.candidates = candidates;
+  this.result = result;
+  const processChunk = () => {
+    const chunks = [];
+    let j = i + chunkSize;
+    while (i < j && i < candidates.length) {
+      const tag = candidates[i];
+      if (isKilled || isStopped) {
+        break;
+      }
+      const ok = this.filter?.call(this, query, tag, i, candidates);
+      if (ok) {
+        chunks.push(tag);
+        result.push(tag);
+      }
+      i++;
+    }
+    if (isKilled) {
+      return;
+    }
+    if (isStopped || i >= candidates.length) {
+      this.onData?.call(this, chunks);
+      this.onEnd?.call(this);
+      return;
+    }
+    this.onData?.call(this, chunks);
+    setTimeout(processChunk, 0);
+  };
+  processChunk();
+};
+var AutoCompleteModule = class _AutoCompleteModule extends MTGAModule {
+  tags;
+  indexes;
+  chunkSize;
+  query;
+  candidates;
+  result;
+  parser;
+  filter;
+  onData;
+  onEnd;
+  _stop;
+  constructor(parent) {
+    super(parent, _AutoCompleteModule.name, 1);
+    this.tags = [];
+    this.indexes = [];
+    this.chunkSize = _AutoCompleteModule.defaults.chunkSize;
+    this.query = null;
+    this.candidates = [];
+    this.result = [];
+    this.parser = _AutoCompleteModule.defaults.parser;
+    this.filter = _AutoCompleteModule.defaults.filter;
+    this.onData = () => void 0;
+    this.onEnd = () => void 0;
+    this._stop = () => void 0;
+  }
+  static name = "AutoComplete";
+  static defaults = {
+    chunkSize: 100,
+    parser: (e) => {
+      const el = e.target;
+      const parts = el.value.split(/[,.․‧・｡。{}()<>[\]\\/|'"`!?]|\r\n|\r|\n/);
+      const index = el.selectionStart;
+      let selectionStart = 0, selectionEnd = 0;
+      for (const part of parts) {
+        selectionEnd = selectionStart + part.length;
+        if (index >= selectionStart && index <= selectionEnd) {
+          break;
+        }
+        selectionStart = selectionEnd + 1;
+      }
+      let head = el.value.substring(0, selectionStart), body = el.value.substring(selectionStart, selectionEnd), tail = el.value.substring(selectionEnd);
+      const match = body.match(/^(\s*)(.*?)(\s*)$/);
+      if (match) {
+        head = head + (match[1] || "");
+        body = match[2];
+        tail = (match[3] || "") + tail;
+      }
+      return {
+        head,
+        body,
+        tail
+      };
+    },
+    filter: (query, tag, index, tags) => {
+      const a = query.body;
+      const b = tag.key;
+      return b.indexOf(a) > -1;
+    }
+  };
+  onKeyup = onKeyup;
+  getIndex(value) {
+    return this.indexes.find(
+      (i) => typeof i.pattern === "string" ? i.pattern === value : i.pattern.test(value)
+    );
+  }
+  stop() {
+    const stop = this._stop;
+    stop?.(false);
+  }
+  kill() {
+    const stop = this._stop;
+    stop?.(true);
+  }
+  set(tag, query) {
+    const mtga = this.parent;
+    if (!query) {
+      query = this.query;
+    }
+    if (!query) {
+      throw new Error("Query not found");
+    }
+    const short = query.head.length + tag.value.length;
+    const long = query.head.length + tag.value.length;
+    const value = query.head + tag.value + query.tail;
+    mtga.setState({
+      short,
+      long,
+      value
+    });
+  }
+};
+
+// src/utils/pair.ts
+var isOpening = (pairs, value) => Object.keys(pairs).includes(value);
+var isClosing = (pairs, value) => Object.values(pairs).includes(value);
+var isPair = (pairs, opening, closing) => !!pairs[opening] && pairs[opening] === closing;
+var getClosing = (pairs, value) => pairs[value];
+function getIndent(pairs, indentUnit, rows) {
+  const createIndent = (unit, size) => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+  const openingChars = Object.keys(pairs).join("");
+  const closingChars = Object.values(pairs).join("");
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const row = rows[i];
+    for (let j = row.length - 1; j >= 0; j--) {
+      const ch = row[j];
+      if (closingChars.includes(ch)) {
+        const depth = row.match(/^\s*/)?.[0].length || 0;
+        return createIndent(indentUnit, depth);
+      }
+      if (openingChars.includes(ch)) {
+        const depth = (row.match(/^\s*/)?.[0].length || 0) + indentUnit.length;
+        return createIndent(indentUnit, depth);
+      }
+    }
+  }
+  return "";
+}
+
+// src/modules/auto-indent.ts
+var onKeydown = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = !ctrlKey && !altKey && key === "Enter";
+  if (!isValid) {
+    return;
+  }
+  e.preventDefault();
+  const mtga = this.parent;
+  const el = this.parent.element;
+  const { pairs, indentUnit } = this;
+  const { short, long, dir, isReversed } = mtga.getState();
+  const currChar = el.value.charAt(short);
+  const left = el.value.substring(0, short);
+  let center = "\n";
+  const right = el.value.substring(long);
+  const leftRows = left.split(/\r\n|\r|\n/);
+  const currIndent = getIndent(pairs, indentUnit, leftRows);
+  let newShort = short + 1;
+  if (isClosing(pairs, currChar)) {
+    const nextIndent = currIndent.substring(0, currIndent.length - indentUnit.length);
+    center += currIndent + "\n" + nextIndent;
+    newShort += currIndent.length;
+  } else {
+    center += currIndent;
+    newShort += currIndent.length;
+  }
+  const newValue = left + center + right;
+  const newLong = newShort;
+  mtga.setState(
+    {
+      isReversed: false,
+      short: newShort,
+      long: newLong,
+      value: newValue
+    },
+    false,
+    true
+  );
+};
+var AutoIndentModule = class _AutoIndentModule extends MTGAModule {
+  pairs;
+  indentUnit;
+  constructor(parent) {
+    super(parent, _AutoIndentModule.name);
+    this.pairs = _AutoIndentModule.defaults.pairs;
+    this.indentUnit = _AutoIndentModule.defaults.indentUnit;
+  }
+  static name = "AutoIndent";
+  static defaults = {
+    pairs: {
+      "(": ")",
+      "[": "]",
+      "{": "}"
+    },
+    indentUnit: "  "
+  };
+  onKeydown = onKeydown;
+};
+
+// src/modules/auto-pair.ts
+var closePairHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const mtga = this.parent;
+  const el = this.parent.element;
+  const pairs = this.pairs;
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = !ctrlKey && !altKey && isOpening(pairs, key);
+  if (!isValid) {
+    return;
+  }
+  e.preventDefault();
+  const { short, long, dir, isReversed } = mtga.getState();
+  const isRange = short !== long;
+  const opening = key;
+  const closing = getClosing(pairs, opening);
+  const left = el.value.substring(0, short);
+  const center = el.value.substring(short, long);
+  const right = el.value.substring(long);
+  let newShort, newLong, newValue;
+  if (!isRange) {
+    const start = (left + opening).length;
+    newValue = left + opening + closing + right;
+    newShort = start;
+    newLong = start;
+  } else {
+    newValue = left + opening + center + closing + right;
+    newShort = (left + opening).length;
+    newLong = (left + opening + center).length;
+  }
+  mtga.setState({
+    isReversed,
+    short: newShort,
+    long: newLong,
+    dir,
+    value: newValue
+  });
+};
+var clearPairHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const mtga = this.parent;
+  const el = this.parent.element;
+  const pairs = this.pairs;
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isRemoveKey = !ctrlKey && !altKey && key === "Backspace";
+  if (!isRemoveKey) {
+    return;
+  }
+  const { short, long } = mtga.getState();
+  const isRange = short !== long;
+  if (isRange) {
+    return;
+  }
+  const prevChar = el.value.charAt(short - 1);
+  const currChar = el.value.charAt(short);
+  if (!isPair(pairs, prevChar, currChar)) {
+    return;
+  }
+  e.preventDefault();
+  const left = el.value.substring(0, short - 1);
+  const right = el.value.substring(short + 1);
+  const newValue = left + right;
+  const newShort = left.length;
+  const newLong = left.length;
+  mtga.setState({
+    isReversed: false,
+    short: newShort,
+    long: newLong,
+    dir: "forward",
+    value: newValue
+  });
+};
+var onKeydown2 = function(e) {
+  closePairHandler.call(this, e);
+  clearPairHandler.call(this, e);
+};
+var AutoPairModule = class _AutoPairModule extends MTGAModule {
+  pairs;
+  constructor(parent) {
+    super(parent, _AutoPairModule.name);
+    this.pairs = { ..._AutoPairModule.defaults.pairs };
+  }
+  static name = "AutoPair";
+  static defaults = {
+    pairs: {
+      "(": ")",
+      "[": "]",
+      "{": "}",
+      "<": ">",
+      "'": "'",
+      '"': '"',
+      "`": "`"
+    }
+  };
+  onKeydown = onKeydown2;
+};
+
+// src/utils/state.ts
+var getState = (el, withValue) => {
   const isReversed = el.selectionStart > el.selectionEnd;
   const short = Math.min(el.selectionStart, el.selectionEnd);
   const long = Math.max(el.selectionStart, el.selectionEnd);
@@ -39,9 +392,13 @@ var getState = function(el, withValue) {
     dir
   };
 };
-var setState = function(el, state) {
+var setState = (el, state) => {
+  let isChanged = false;
   if (typeof state.value === "string") {
-    el.value = state.value;
+    if (el.value !== state.value) {
+      el.value = state.value;
+      isChanged = true;
+    }
   }
   if (!state.isReversed) {
     el.setSelectionRange(state.short, state.long, state.dir);
@@ -49,148 +406,14 @@ var setState = function(el, state) {
     el.setSelectionRange(state.long, state.short, state.dir);
   }
   el.focus();
-};
-
-// src/modules/utils.ts
-var parseKeyboardEvent = function(e) {
-  const key = e.key;
-  const altKey = e.altKey;
-  const shiftKey = e.shiftKey;
-  const ctrlKey = e.ctrlKey || e.metaKey;
-  return {
-    key,
-    altKey,
-    shiftKey,
-    ctrlKey
-  };
-};
-function getIndent(pairs, indentUnit, rows) {
-  const createIndent = function(unit, size) {
-    return unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-  };
-  const openingChars = Object.keys(pairs).join("");
-  const closingChars = Object.values(pairs).join("");
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const row = rows[i];
-    for (let j = row.length - 1; j >= 0; j--) {
-      const ch = row[j];
-      if (closingChars.includes(ch)) {
-        const depth = row.match(/^\s*/)?.[0].length || 0;
-        return createIndent(indentUnit, depth);
-      }
-      if (openingChars.includes(ch)) {
-        const depth = (row.match(/^\s*/)?.[0].length || 0) + indentUnit.length;
-        return createIndent(indentUnit, depth);
-      }
-    }
-  }
-  return "";
-}
-
-// src/modules/history.ts
-var onKeydown = function(e) {
-  if (e.defaultPrevented) {
-    return;
-  }
-  const mtga = this.parent;
-  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const isValid = ctrlKey && !altKey && key.toLowerCase() === "z";
-  if (!isValid) {
-    return;
-  }
-  e.preventDefault();
-  let h;
-  if (!shiftKey) {
-    h = this.prev();
-  } else {
-    h = this.next();
-  }
-  if (h) {
-    mtga.setState(h, false, false);
-  }
-};
-var onKeyup = function(e) {
-  const mtga = this.parent;
-  const keydownState = mtga._keydownState;
-  mtga._removeKeydownState();
-  if (!keydownState) {
-    return;
-  }
-  const el = mtga.element;
-  const prevValue = keydownState.value;
-  const currValue = el.value;
-  if (prevValue !== currValue) {
-    mtga.addHistory();
-  } else {
-    const prevState = keydownState.state;
-    const currState = mtga.getState();
-    if (prevState.short !== currState.short || prevState.long !== currState.long) {
-      mtga.addHistory(false);
-    }
-  }
-};
-var HistoryModule = class _HistoryModule extends MTGAModule {
-  items;
-  maxCount;
-  _i;
-  constructor(parent) {
-    super(parent, _HistoryModule.name, 0);
-    this.items = [];
-    this.maxCount = _HistoryModule.defaults.maxCount;
-    this._i = 1;
-  }
-  static name = "History";
-  static defaults = {
-    maxCount: 390
-  };
-  onKeydown = onKeydown;
-  onKeyup = onKeyup;
-  prune() {
-    if (this._i > 1) {
-      this.items = this.items.slice(0, this.items.length - (this._i - 1));
-      this._i = 1;
-    }
-  }
-  add(withPrune = true) {
-    const mtga = this.parent;
-    if (withPrune) {
-      this.prune();
-    } else if (this._i !== 1) {
-      return;
-    }
-    const prevState = this.items[this.items.length - 1];
-    const currState = mtga.getState(true);
-    const isChanged = !prevState || prevState.short !== currState.short || prevState.long !== currState.long || prevState.value !== currState.value;
-    if (!isChanged) {
-      return;
-    }
-    this.items.push(currState);
-    if (this.items.length > this.maxCount) {
-      this.items.shift();
-    }
-  }
-  remove() {
-    this.items.pop();
-  }
-  prev() {
-    if (this._i < this.items.length) {
-      this._i += 1;
-    }
-    return this.curr();
-  }
-  next() {
-    if (this._i > 1) {
-      this._i -= 1;
-    }
-    return this.curr();
-  }
-  curr() {
-    return this.items[this.items.length - this._i];
+  if (isChanged) {
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 };
 
-// src/types/row.ts
-var getRows = function(el) {
+// src/utils/row.ts
+var getRows = (el) => {
   const { short, long } = getState(el);
   const arr = el.value.split(/\n/);
   const rows = [];
@@ -313,13 +536,17 @@ var singleLineHandler = function(e) {
     }
     newValues.push(newValue);
   }
-  mtga.setState({
-    isReversed,
-    short: newShort,
-    long: newLong,
-    dir,
-    value: newValues.join("")
-  }, false, true);
+  mtga.setState(
+    {
+      isReversed,
+      short: newShort,
+      long: newLong,
+      dir,
+      value: newValues.join("")
+    },
+    false,
+    true
+  );
 };
 var multiLineHandler = function(e) {
   if (e.defaultPrevented) {
@@ -352,7 +579,7 @@ var multiLineHandler = function(e) {
     value: newValue
   });
 };
-var onKeydown2 = function(e) {
+var onKeydown3 = function(e) {
   singleLineHandler.call(this, e);
   multiLineHandler.call(this, e);
 };
@@ -369,11 +596,113 @@ var CommentModule = class _CommentModule extends MTGAModule {
     pattern: /^\/\/\s?/,
     value: "// "
   };
-  onKeydown = onKeydown2;
+  onKeydown = onKeydown3;
+};
+
+// src/modules/history.ts
+var onKeydown4 = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const mtga = this.parent;
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = ctrlKey && !altKey && key.toLowerCase() === "z";
+  if (!isValid) {
+    return;
+  }
+  e.preventDefault();
+  let h;
+  if (!shiftKey) {
+    h = this.prev();
+  } else {
+    h = this.next();
+  }
+  if (h) {
+    mtga.setState(h, false, false);
+  }
+};
+var onKeyup2 = function(e) {
+  const mtga = this.parent;
+  const keydownState = mtga._keydownState;
+  mtga._removeKeydownState();
+  if (!keydownState) {
+    return;
+  }
+  const el = mtga.element;
+  const prevValue = keydownState.value;
+  const currValue = el.value;
+  if (prevValue !== currValue) {
+    mtga.addHistory();
+  } else {
+    const prevState = keydownState.state;
+    const currState = mtga.getState();
+    if (prevState.short !== currState.short || prevState.long !== currState.long) {
+      mtga.addHistory(false);
+    }
+  }
+};
+var HistoryModule = class _HistoryModule extends MTGAModule {
+  items;
+  maxCount;
+  _i;
+  constructor(parent) {
+    super(parent, _HistoryModule.name, 0);
+    this.items = [];
+    this.maxCount = _HistoryModule.defaults.maxCount;
+    this._i = 1;
+  }
+  static name = "History";
+  static defaults = {
+    maxCount: 390
+  };
+  onKeydown = onKeydown4;
+  onKeyup = onKeyup2;
+  prune() {
+    if (this._i > 1) {
+      this.items = this.items.slice(0, this.items.length - (this._i - 1));
+      this._i = 1;
+    }
+  }
+  add(withPrune = true) {
+    const mtga = this.parent;
+    if (withPrune) {
+      this.prune();
+    } else if (this._i !== 1) {
+      return;
+    }
+    const prevState = this.items[this.items.length - 1];
+    const currState = mtga.getState(true);
+    const isChanged = !prevState || prevState.short !== currState.short || prevState.long !== currState.long || prevState.value !== currState.value;
+    if (!isChanged) {
+      return;
+    }
+    this.items.push(currState);
+    if (this.items.length > this.maxCount) {
+      this.items.shift();
+    }
+  }
+  remove() {
+    this.items.pop();
+  }
+  prev() {
+    if (this._i < this.items.length) {
+      this._i += 1;
+    }
+    return this.curr();
+  }
+  next() {
+    if (this._i > 1) {
+      this._i -= 1;
+    }
+    return this.curr();
+  }
+  curr() {
+    return this.items[this.items.length - this._i];
+  }
 };
 
 // src/modules/indent.ts
-var onKeydown3 = function(e) {
+var onKeydown5 = function(e) {
   if (e.defaultPrevented) {
     return;
   }
@@ -456,336 +785,12 @@ var IndentModule = class _IndentModule extends MTGAModule {
     this.pattern = _IndentModule.defaults.pattern;
     this.value = _IndentModule.defaults.value;
   }
-  onKeydown = onKeydown3;
+  onKeydown = onKeydown5;
   static name = "Indent";
   static defaults = {
     pattern: /^[^\S\n\r][^\S\n\r]?/,
     value: "  "
   };
-};
-
-// src/types/pair.ts
-var isOpening = function(pairs, value) {
-  return Object.keys(pairs).includes(value);
-};
-var isClosing = function(pairs, value) {
-  return Object.values(pairs).includes(value);
-};
-var isPair = function(pairs, opening, closing) {
-  return !!pairs[opening] && pairs[opening] === closing;
-};
-var getClosing = function(pairs, value) {
-  return pairs[value];
-};
-
-// src/modules/auto-indent.ts
-var onKeydown4 = function(e) {
-  if (e.defaultPrevented) {
-    return;
-  }
-  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const isValid = !ctrlKey && !altKey && key === "Enter";
-  if (!isValid) {
-    return;
-  }
-  e.preventDefault();
-  const mtga = this.parent;
-  const el = this.parent.element;
-  const { pairs, indentUnit } = this;
-  const { short, long, dir, isReversed } = mtga.getState();
-  const currChar = el.value.charAt(short);
-  const left = el.value.substring(0, short);
-  let center = "\n";
-  const right = el.value.substring(long);
-  const leftRows = left.split(/\r\n|\r|\n/);
-  const currIndent = getIndent(pairs, indentUnit, leftRows);
-  let newShort = short + 1;
-  if (isClosing(pairs, currChar)) {
-    const nextIndent = currIndent.substring(0, currIndent.length - indentUnit.length);
-    center += currIndent + "\n" + nextIndent;
-    newShort += currIndent.length;
-  } else {
-    center += currIndent;
-    newShort += currIndent.length;
-  }
-  const newValue = left + center + right;
-  const newLong = newShort;
-  mtga.setState({
-    isReversed: false,
-    short: newShort,
-    long: newLong,
-    value: newValue
-  }, false, true);
-};
-var AutoIndentModule = class _AutoIndentModule extends MTGAModule {
-  pairs;
-  indentUnit;
-  constructor(parent) {
-    super(parent, _AutoIndentModule.name);
-    this.pairs = _AutoIndentModule.defaults.pairs;
-    this.indentUnit = _AutoIndentModule.defaults.indentUnit;
-  }
-  onKeydown = onKeydown4;
-  static name = "AutoIndent";
-  static defaults = {
-    pairs: {
-      "(": ")",
-      "[": "]",
-      "{": "}"
-    },
-    indentUnit: "  "
-  };
-};
-
-// src/modules/auto-pair.ts
-var closePairHandler = function(e) {
-  if (e.defaultPrevented) {
-    return;
-  }
-  const mtga = this.parent;
-  const el = this.parent.element;
-  const pairs = this.pairs;
-  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const isValid = !ctrlKey && !altKey && isOpening(pairs, key);
-  if (!isValid) {
-    return;
-  }
-  e.preventDefault();
-  const { short, long, dir, isReversed } = mtga.getState();
-  const isRange = short !== long;
-  const opening = key;
-  const closing = getClosing(pairs, opening);
-  const left = el.value.substring(0, short);
-  const center = el.value.substring(short, long);
-  const right = el.value.substring(long);
-  let newShort, newLong, newValue;
-  if (!isRange) {
-    const start = (left + opening).length;
-    newValue = left + opening + closing + right;
-    newShort = start;
-    newLong = start;
-  } else {
-    newValue = left + opening + center + closing + right;
-    newShort = (left + opening).length;
-    newLong = (left + opening + center).length;
-  }
-  mtga.setState({
-    isReversed,
-    short: newShort,
-    long: newLong,
-    dir,
-    value: newValue
-  });
-};
-var clearPairHandler = function(e) {
-  if (e.defaultPrevented) {
-    return;
-  }
-  const mtga = this.parent;
-  const el = this.parent.element;
-  const pairs = this.pairs;
-  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const isRemoveKey = !ctrlKey && !altKey && key === "Backspace";
-  if (!isRemoveKey) {
-    return;
-  }
-  const { short, long } = mtga.getState();
-  const isRange = short !== long;
-  if (isRange) {
-    return;
-  }
-  const prevChar = el.value.charAt(short - 1);
-  const currChar = el.value.charAt(short);
-  if (!isPair(pairs, prevChar, currChar)) {
-    return;
-  }
-  e.preventDefault();
-  const left = el.value.substring(0, short - 1);
-  const right = el.value.substring(short + 1);
-  const newValue = left + right;
-  const newShort = left.length;
-  const newLong = left.length;
-  mtga.setState({
-    isReversed: false,
-    short: newShort,
-    long: newLong,
-    dir: "forward",
-    value: newValue
-  });
-};
-var onKeydown5 = function(e) {
-  closePairHandler.call(this, e);
-  clearPairHandler.call(this, e);
-};
-var AutoPairModule = class _AutoPairModule extends MTGAModule {
-  pairs;
-  constructor(parent) {
-    super(parent, _AutoPairModule.name);
-    this.pairs = { ..._AutoPairModule.defaults.pairs };
-  }
-  onKeydown = onKeydown5;
-  static name = "AutoPair";
-  static defaults = {
-    pairs: {
-      "(": ")",
-      "[": "]",
-      "{": "}",
-      "<": ">",
-      "'": "'",
-      '"': '"',
-      "`": "`"
-    }
-  };
-};
-
-// src/modules/auto-complete.ts
-var onKeyup2 = function(e) {
-  if (e.defaultPrevented) {
-    return;
-  }
-  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const isValid = !ctrlKey && !altKey && (key.length === 1 || key === "Backspace");
-  if (!isValid) {
-    return;
-  }
-  this.kill();
-  const chunkSize = this.chunkSize;
-  let isStopped = false, isKilled = false, i = 0;
-  const stop = (kill) => {
-    isStopped = true;
-    isKilled = kill || false;
-  };
-  this._stop = stop;
-  const query = this.parser.call(this, e);
-  const text = query?.body;
-  if (!text) {
-    this.query = null;
-    this.candidates = [];
-    this.result = [];
-    return;
-  }
-  const candidates = this.getIndex(text)?.tags || this.tags;
-  const result = [];
-  this.query = query;
-  this.candidates = candidates;
-  this.result = result;
-  const processChunk = () => {
-    const chunks = [];
-    let j = i + chunkSize;
-    while (i < j && i < candidates.length) {
-      const tag = candidates[i];
-      if (isKilled || isStopped) {
-        break;
-      }
-      const ok = this.filter?.call(this, query, tag, i, candidates);
-      if (ok) {
-        chunks.push(tag);
-        result.push(tag);
-      }
-      i++;
-    }
-    if (isKilled) {
-      return;
-    }
-    if (isStopped || i >= candidates.length) {
-      this.onData?.call(this, chunks);
-      this.onEnd?.call(this);
-      return;
-    }
-    this.onData?.call(this, chunks);
-    setTimeout(processChunk, 0);
-  };
-  processChunk();
-};
-var AutoCompleteModule = class _AutoCompleteModule extends MTGAModule {
-  tags;
-  indexes;
-  chunkSize;
-  query;
-  candidates;
-  result;
-  parser;
-  filter;
-  onData;
-  onEnd;
-  _stop;
-  constructor(parent) {
-    super(parent, _AutoCompleteModule.name, 1);
-    this.tags = [];
-    this.indexes = [];
-    this.chunkSize = _AutoCompleteModule.defaults.chunkSize;
-    this.query = null;
-    this.candidates = [];
-    this.result = [];
-    this.parser = _AutoCompleteModule.defaults.parser;
-    this.filter = _AutoCompleteModule.defaults.filter;
-    this.onData = () => void 0;
-    this.onEnd = () => void 0;
-    this._stop = () => void 0;
-  }
-  onKeyup = onKeyup2;
-  static name = "AutoComplete";
-  static defaults = {
-    chunkSize: 100,
-    parser: function(e) {
-      const el = e.target;
-      const parts = el.value.split(/[,.․‧・｡。{}()<>[\]\\/|'"`!?]|\r\n|\r|\n/);
-      const index = el.selectionStart;
-      let selectionStart = 0, selectionEnd = 0;
-      for (const part of parts) {
-        selectionEnd = selectionStart + part.length;
-        if (index >= selectionStart && index <= selectionEnd) {
-          break;
-        }
-        selectionStart = selectionEnd + 1;
-      }
-      let head = el.value.substring(0, selectionStart), body = el.value.substring(selectionStart, selectionEnd), tail = el.value.substring(selectionEnd);
-      const match = body.match(/^(\s*)(.*?)(\s*)$/);
-      if (match) {
-        head = head + (match[1] || "");
-        body = match[2];
-        tail = (match[3] || "") + tail;
-      }
-      return {
-        head,
-        body,
-        tail
-      };
-    },
-    filter: function(query, tag, index, tags) {
-      const a = query.body;
-      const b = tag.key;
-      return b.indexOf(a) > -1;
-    }
-  };
-  getIndex(value) {
-    return this.indexes.find((i) => typeof i.pattern === "string" ? i.pattern === value : i.pattern.test(value));
-  }
-  stop() {
-    const stop = this._stop;
-    stop?.(false);
-  }
-  kill() {
-    const stop = this._stop;
-    stop?.(true);
-  }
-  set(tag, query) {
-    const mtga = this.parent;
-    if (!query) {
-      query = this.query;
-    }
-    if (!query) {
-      throw new Error("Query not found");
-    }
-    const short = query.head.length + tag.value.length;
-    const long = query.head.length + tag.value.length;
-    const value = query.head + tag.value + query.tail;
-    mtga.setState({
-      short,
-      long,
-      value
-    });
-  }
 };
 
 // src/modules/line-break.ts
@@ -862,70 +867,52 @@ var LineBreakModule = class _LineBreakModule extends MTGAModule {
   };
 };
 
-// src/modules/line-remove.ts
-var onKeydown7 = function(e) {
+// src/modules/line-copy.ts
+var IS_SUPPORTED = !!navigator.clipboard?.writeText;
+var onKeydown7 = async function(e) {
   if (e.defaultPrevented) {
+    return;
+  }
+  if (!IS_SUPPORTED) {
+    console.warn(`navigator.clipboard.writeText not found`);
     return;
   }
   const mtga = this.parent;
   const el = this.parent.element;
   const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const isValid = ctrlKey && !altKey && shiftKey && key.toLowerCase() === "k";
+  const { short, long, dir, isReversed } = mtga.getState();
+  const isRange = short !== long;
+  const isValid = !isRange && ctrlKey && !altKey && !shiftKey && key.toLowerCase() === "c";
   if (!isValid) {
     return;
   }
   e.preventDefault();
   const rows = getRows(el);
-  const selectedRows = rows.filter((r) => r.isSelected);
-  const firstSelectedRow = selectedRows[0];
-  const lastSelectedRow = selectedRows[selectedRows.length - 1];
-  let newValues = [], newShort = 0, newLong = 0, maxRowIndex = 0;
-  for (const row of rows) {
-    if (row.isSelected) {
-      continue;
-    }
-    if (row.index === firstSelectedRow.index - 1) {
-      newShort = row.endIndex;
-      newLong = row.endIndex;
-    } else if (row.index === lastSelectedRow.index + 1) {
-      maxRowIndex = row.value.length;
-    }
-    newValues.push(row.value);
+  let data = rows.find((r) => r.isSelected)?.value;
+  if (!data) {
+    return;
   }
-  const rowIndex = Math.min(
-    Math.max(0, lastSelectedRow.selectionStart, lastSelectedRow.selectionEnd - 1),
-    Math.max(0, maxRowIndex - 1)
-  );
-  newShort += rowIndex;
-  newLong += rowIndex;
-  let value = newValues.join("");
-  const removeLastLinebreak = selectedRows.length === 1 && selectedRows[0].value === "" && rows[rows.length - 1].index === selectedRows[0].index;
-  if (removeLastLinebreak) {
-    value = value.substring(0, value.length - 1);
+  if (!data.endsWith("\n")) {
+    data += "\n";
   }
-  mtga.setState({
-    isReversed: false,
-    short: newShort,
-    long: newLong,
-    value
-  });
+  await navigator.clipboard.writeText(data);
 };
-var LineRemoveModule = class _LineRemoveModule extends MTGAModule {
+var LineCopyModule = class _LineCopyModule extends MTGAModule {
   constructor(parent) {
-    super(parent, _LineRemoveModule.name);
+    super(parent, _LineCopyModule.name);
   }
   onKeydown = onKeydown7;
-  static name = "LineRemove";
+  static name = "LineCopy";
   static defaults = {};
 };
 
 // src/modules/line-cut.ts
-var IS_SUPPORTED = !!navigator.clipboard?.writeText;
-var onKeydownAsync = async function(e) {
+var IS_SUPPORTED2 = !!navigator.clipboard?.writeText;
+var onKeydown8 = async function(e) {
   if (e.defaultPrevented) {
     return;
   }
-  if (!IS_SUPPORTED) {
+  if (!IS_SUPPORTED2) {
     console.warn(`navigator.clipboard.writeText not found`);
     return;
   }
@@ -969,47 +956,8 @@ var LineCutModule = class _LineCutModule extends MTGAModule {
   constructor(parent) {
     super(parent, _LineCutModule.name);
   }
-  onKeydownAsync = onKeydownAsync;
+  onKeydown = onKeydown8;
   static name = "LineCut";
-  static defaults = {};
-};
-
-// src/modules/line-copy.ts
-var IS_SUPPORTED2 = !!navigator.clipboard?.writeText;
-var onKeydownAsync2 = async function(e) {
-  if (e.defaultPrevented) {
-    return;
-  }
-  if (!IS_SUPPORTED2) {
-    console.warn(`navigator.clipboard.writeText not found`);
-    return;
-  }
-  const mtga = this.parent;
-  const el = this.parent.element;
-  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
-  const { short, long, dir, isReversed } = mtga.getState();
-  const isRange = short !== long;
-  const isValid = !isRange && ctrlKey && !altKey && !shiftKey && key.toLowerCase() === "c";
-  if (!isValid) {
-    return;
-  }
-  e.preventDefault();
-  const rows = getRows(el);
-  let data = rows.find((r) => r.isSelected)?.value;
-  if (!data) {
-    return;
-  }
-  if (!data.endsWith("\n")) {
-    data += "\n";
-  }
-  await navigator.clipboard.writeText(data);
-};
-var LineCopyModule = class _LineCopyModule extends MTGAModule {
-  constructor(parent) {
-    super(parent, _LineCopyModule.name);
-  }
-  onKeydownAsync = onKeydownAsync2;
-  static name = "LineCopy";
   static defaults = {};
 };
 
@@ -1064,9 +1012,66 @@ var LinePasteModule = class _LinePasteModule extends MTGAModule {
   static defaults = {};
 };
 
-// src/mtga.ts
+// src/modules/line-remove.ts
+var onKeydown9 = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  const mtga = this.parent;
+  const el = this.parent.element;
+  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  const isValid = ctrlKey && !altKey && shiftKey && key.toLowerCase() === "k";
+  if (!isValid) {
+    return;
+  }
+  e.preventDefault();
+  const rows = getRows(el);
+  const selectedRows = rows.filter((r) => r.isSelected);
+  const firstSelectedRow = selectedRows[0];
+  const lastSelectedRow = selectedRows[selectedRows.length - 1];
+  let newValues = [], newShort = 0, newLong = 0, maxRowIndex = 0;
+  for (const row of rows) {
+    if (row.isSelected) {
+      continue;
+    }
+    if (row.index === firstSelectedRow.index - 1) {
+      newShort = row.endIndex;
+      newLong = row.endIndex;
+    } else if (row.index === lastSelectedRow.index + 1) {
+      maxRowIndex = row.value.length;
+    }
+    newValues.push(row.value);
+  }
+  const rowIndex = Math.min(
+    Math.max(0, lastSelectedRow.selectionStart, lastSelectedRow.selectionEnd - 1),
+    Math.max(0, maxRowIndex - 1)
+  );
+  newShort += rowIndex;
+  newLong += rowIndex;
+  let value = newValues.join("");
+  const removeLastLinebreak = selectedRows.length === 1 && selectedRows[0].value === "" && rows[rows.length - 1].index === selectedRows[0].index;
+  if (removeLastLinebreak) {
+    value = value.substring(0, value.length - 1);
+  }
+  mtga.setState({
+    isReversed: false,
+    short: newShort,
+    long: newLong,
+    value
+  });
+};
+var LineRemoveModule = class _LineRemoveModule extends MTGAModule {
+  constructor(parent) {
+    super(parent, _LineRemoveModule.name);
+  }
+  onKeydown = onKeydown9;
+  static name = "LineRemove";
+  static defaults = {};
+};
+
+// src/index.ts
 var MTGAMap = /* @__PURE__ */ new WeakMap();
-var MTGA13 = class _MTGA {
+var MTGA = class _MTGA {
   element;
   modules;
   moduleOrder;
@@ -1077,7 +1082,7 @@ var MTGA13 = class _MTGA {
   _focusEvent;
   _blurEvent;
   static exists(el) {
-    return !!this.getMTGA(el);
+    return !!_MTGA.getMTGA(el);
   }
   static getMTGA(el) {
     return MTGAMap.get(el);
@@ -1093,6 +1098,7 @@ var MTGA13 = class _MTGA {
     if (_MTGA.exists(el)) {
       throw new Error("Already initialized");
     }
+    MTGAMap.set(el, this);
     this.element = el;
     this.moduleOrder = [];
     this.modules = {};
@@ -1107,33 +1113,26 @@ var MTGA13 = class _MTGA {
     this.modules[AutoIndentModule.name] = new AutoIndentModule(this);
     this.modules[AutoPairModule.name] = new AutoPairModule(this);
     this.modules[AutoCompleteModule.name] = new AutoCompleteModule(this);
+    this.setModuleOrder();
     this._keydownState = null;
     this._keydownEvent = async (e) => {
       for (const m of this.moduleOrder) {
-        m.onKeydown?.call(m, e);
-        await m.onKeydownAsync?.call(m, e);
+        await m.onKeydown?.call(m, e);
       }
       if (e.defaultPrevented) {
         this._removeKeydownState();
-      } else if (![
-        "Meta",
-        "Control",
-        "Alt",
-        "Shift"
-      ].includes(e.key)) {
+      } else if (!["Meta", "Control", "Alt", "Shift"].includes(e.key)) {
         this._setKeydownState(e);
       }
     };
     this._keyupEvent = async (e) => {
       for (const m of this.moduleOrder) {
-        m.onKeyup?.call(m, e);
-        await m.onKeyupAsync?.call(m, e);
+        await m.onKeyup?.call(m, e);
       }
     };
     this._pasteEvent = async (e) => {
       for (const m of this.moduleOrder) {
-        m.onPaste?.call(m, e);
-        await m.onPasteAsync?.call(m, e);
+        await m.onPaste?.call(m, e);
       }
     };
     const _selectionEvent = (e) => {
@@ -1142,18 +1141,28 @@ var MTGA13 = class _MTGA {
     this._focusEvent = (e) => {
       setTimeout(() => {
         this.addHistory(false);
-        this.element.addEventListener("pointerup", _selectionEvent, _MTGA.defaults.eventListenerOptions);
+        this.element.addEventListener(
+          "pointerup",
+          _selectionEvent,
+          _MTGA.defaults.eventListenerOptions
+        );
       }, 0);
     };
     this._blurEvent = (e) => {
-      this.element.removeEventListener("pointerup", _selectionEvent, _MTGA.defaults.eventListenerOptions);
+      this.element.removeEventListener(
+        "pointerup",
+        _selectionEvent,
+        _MTGA.defaults.eventListenerOptions
+      );
     };
     this.setEvents();
-    this.setModuleOrder();
-    MTGAMap.set(el, this);
   }
   setEvents() {
-    this.element.addEventListener("keydown", this._keydownEvent, _MTGA.defaults.eventListenerOptions);
+    this.element.addEventListener(
+      "keydown",
+      this._keydownEvent,
+      _MTGA.defaults.eventListenerOptions
+    );
     this.element.addEventListener("keyup", this._keyupEvent, _MTGA.defaults.eventListenerOptions);
     this.element.addEventListener("paste", this._pasteEvent, _MTGA.defaults.eventListenerOptions);
     this.element.addEventListener("focus", this._focusEvent, _MTGA.defaults.eventListenerOptions);
@@ -1223,6 +1232,7 @@ export {
   LineCutModule,
   LinePasteModule,
   LineRemoveModule,
-  MTGA13 as MTGA,
+  MTGA,
   MTGAModule
 };
+//# sourceMappingURL=mtga.mjs.map
