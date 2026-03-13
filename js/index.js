@@ -433,7 +433,7 @@ function init(elem) {
         value: head + body + tail,
       });
     }
-  }
+  } 
 
   const onData = function (chunks) {
     // if (chunks.length) {
