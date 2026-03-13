@@ -31,7 +31,7 @@ try {
   ].join(" && "));
 } catch(err) {
   console.error(err);
-  process.exit(1);
+  // process.exit(1);
 }
 
 try {
@@ -41,5 +41,6 @@ try {
   ].join(" && "));
 } catch(err) {
   console.error(err);
+  console.log(err.output[1].toString())
   process.exit(1);
 }
