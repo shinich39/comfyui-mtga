@@ -128,7 +128,7 @@ async function getLocalModels() {
   return await response.json();
 }
 
-function init(elem) {
+function init(node, elem) {
   if (MTGA.exists(elem)) {
     // console.warn("Already initialized");
     return;
@@ -256,6 +256,7 @@ function init(elem) {
       // remove double commas
       ac.query.tail = ac.query.tail.replace(/^,/, "");
       ac.set(tag);
+      dirty();
     }
   }
 
@@ -284,6 +285,18 @@ function init(elem) {
 
   const isShown = () => {
     return listEl.style.visibility === "";
+  }
+
+  let dirtyTimer = null;
+  const dirty = () => {
+    if (dirtyTimer) {
+      clearTimeout(dirtyTimer);
+    }
+
+    dirtyTimer = setTimeout(() => {
+      node.setDirtyCanvas(true, true);
+      dirtyTimer = null;
+    }, 256);
   }
   
   const show = () => {
@@ -515,7 +528,10 @@ function init(elem) {
     listHeaderEl.innerHTML = `${result.length} tags found.`;
   }
 
-  elem.addEventListener("keydown", keydownHandler);
+  elem.addEventListener("keydown", (e) => {
+    keydownHandler(e);
+    dirty();
+  });
   elem.addEventListener("click", () => hide());
   elem.addEventListener("blur", () => hide());
   ac.onData = onData;
@@ -648,7 +664,7 @@ app.registerExtension({
       
         const elem = r.widget.element;
 
-        init(elem);
+        init(node, elem);
 
         return r;
       };
@@ -682,7 +698,7 @@ app.registerExtension({
 
               eventMap.add(el);
 
-              init(el);
+              init(node, el);
             }
           } catch(err) {
             console.error(err);
