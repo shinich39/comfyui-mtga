@@ -17,8 +17,8 @@ LATEST_PATH = os.path.join(JSON_DIR_PATH, "civitai.latest.json")
 DATA_PATH = os.path.join(JSON_DIR_PATH, "civitai.json")
 
 REPO_URL = "https://github.com/shinich39/civitai-model-json"
-LATEST_URL = "https://raw.githubusercontent.com/shinich39/civitai-model-json/refs/heads/main/dist/latest.json"
-DATA_URL = "https://raw.githubusercontent.com/shinich39/civitai-model-json/refs/heads/main/dist/most-used-words.json"
+LATEST_URL = "https://raw.githubusercontent.com/shinich39/civitai-model-json/refs/heads/main/data/latest.json"
+DATA_URL = "https://raw.githubusercontent.com/shinich39/civitai-model-json/refs/heads/main/data/most-used-words.json"
 
 def get_remote_latest():
   try:
