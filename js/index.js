@@ -12,7 +12,7 @@ import {
   LineBreakModule, 
   HistoryModule, 
   LineRemoveModule
-} from "./libs/mtga.mjs?v=20260314"; // prevent load mgta-js cache like "./libs/mtga.mjs?v=2";
+} from "./libs/mtga.mjs?v=20260611"; // unload js cache
 
 AutoPairModule.defaults.pairs = {
   "{": "}",

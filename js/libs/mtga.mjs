@@ -27,6 +27,7 @@ var parseKeyboardEvent = (e) => {
     ctrlKey
   };
 };
+var isComposingKeyboardEvent = (e) => e.isComposing || e.key === "Process" || e.keyCode === 229;
 
 // src/modules/auto-complete.ts
 var onKeyup = function(e) {
@@ -184,6 +185,7 @@ var AutoCompleteModule = class _AutoCompleteModule extends MTGAModule {
 var isOpening = (pairs, value) => Object.keys(pairs).includes(value);
 var isClosing = (pairs, value) => Object.values(pairs).includes(value);
 var isPair = (pairs, opening, closing) => !!pairs[opening] && pairs[opening] === closing;
+var getOpening = (pairs, value) => Object.entries(pairs).find((entry) => entry[1] === value)?.[0];
 var getClosing = (pairs, value) => pairs[value];
 function getIndent(pairs, indentUnit, rows) {
   const createIndent = (unit, size) => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
@@ -207,11 +209,61 @@ function getIndent(pairs, indentUnit, rows) {
 }
 
 // src/modules/auto-indent.ts
-var onKeydown = function(e) {
+var getLeadingWhitespace = (value) => value.match(/^[^\S\r\n]*/) ? value.match(/^[^\S\r\n]*/)[0] : "";
+var outdentClosingHandler = function(e) {
   if (e.defaultPrevented) {
     return;
   }
-  const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
+  if (isComposingKeyboardEvent(e)) {
+    return;
+  }
+  const { key, altKey, ctrlKey } = parseKeyboardEvent(e);
+  const isValid = !ctrlKey && !altKey && isClosing(this.pairs, key);
+  if (!isValid) {
+    return;
+  }
+  const mtga = this.parent;
+  const el = this.parent.element;
+  const { indentUnit, pairs } = this;
+  const { short, long, dir, isReversed } = mtga.getState();
+  if (short !== long) {
+    return;
+  }
+  const left = el.value.substring(0, short);
+  const currentRow = left.split(/\r\n|\r|\n/).pop() || "";
+  const leadingWhitespace = getLeadingWhitespace(currentRow);
+  if (currentRow.trim().length > 0 || leadingWhitespace.length < indentUnit.length) {
+    return;
+  }
+  const opening = getOpening(pairs, key);
+  if (!opening) {
+    return;
+  }
+  const beforeRow = currentRow.slice(0, currentRow.length - leadingWhitespace.length);
+  const prevChar = beforeRow.charAt(beforeRow.length - 1);
+  const currChar = el.value.charAt(short);
+  if (currChar === key || isPair(pairs, prevChar, key)) {
+    return;
+  }
+  e.preventDefault();
+  const newShort = short - indentUnit.length + 1;
+  const newValue = el.value.substring(0, short - indentUnit.length) + key + el.value.substring(long);
+  mtga.setState({
+    isReversed,
+    short: newShort,
+    long: newShort,
+    dir,
+    value: newValue
+  });
+};
+var enterHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  if (isComposingKeyboardEvent(e)) {
+    return;
+  }
+  const { key, altKey, ctrlKey } = parseKeyboardEvent(e);
   const isValid = !ctrlKey && !altKey && key === "Enter";
   if (!isValid) {
     return;
@@ -220,21 +272,23 @@ var onKeydown = function(e) {
   const mtga = this.parent;
   const el = this.parent.element;
   const { pairs, indentUnit } = this;
-  const { short, long, dir, isReversed } = mtga.getState();
-  const currChar = el.value.charAt(short);
+  const { short, long } = mtga.getState();
   const left = el.value.substring(0, short);
+  const currentRow = left.split(/\r\n|\r|\n/).pop() || "";
+  const baseIndent = getLeadingWhitespace(currentRow);
+  const trimmedCurrentRow = currentRow.trimEnd();
+  const prevChar = trimmedCurrentRow.charAt(trimmedCurrentRow.length - 1);
+  const currChar = el.value.charAt(short);
   let center = "\n";
   const right = el.value.substring(long);
-  const leftRows = left.split(/\r\n|\r|\n/);
-  const currIndent = getIndent(pairs, indentUnit, leftRows);
+  const nextIndent = isOpening(pairs, prevChar) ? baseIndent + indentUnit : baseIndent;
   let newShort = short + 1;
   if (isClosing(pairs, currChar)) {
-    const nextIndent = currIndent.substring(0, currIndent.length - indentUnit.length);
-    center += currIndent + "\n" + nextIndent;
-    newShort += currIndent.length;
+    center += nextIndent + "\n" + baseIndent;
+    newShort += nextIndent.length;
   } else {
-    center += currIndent;
-    newShort += currIndent.length;
+    center += nextIndent;
+    newShort += nextIndent.length;
   }
   const newValue = left + center + right;
   const newLong = newShort;
@@ -248,6 +302,10 @@ var onKeydown = function(e) {
     false,
     true
   );
+};
+var onKeydown = function(e) {
+  outdentClosingHandler.call(this, e);
+  enterHandler.call(this, e);
 };
 var AutoIndentModule = class _AutoIndentModule extends MTGAModule {
   pairs;
@@ -270,8 +328,45 @@ var AutoIndentModule = class _AutoIndentModule extends MTGAModule {
 };
 
 // src/modules/auto-pair.ts
+var overtypeClosingHandler = function(e) {
+  if (e.defaultPrevented) {
+    return;
+  }
+  if (isComposingKeyboardEvent(e)) {
+    return;
+  }
+  const mtga = this.parent;
+  const el = this.parent.element;
+  const pairs = this.pairs;
+  const { key, altKey, ctrlKey } = parseKeyboardEvent(e);
+  const isValid = !ctrlKey && !altKey && isClosing(pairs, key);
+  if (!isValid) {
+    return;
+  }
+  const { short, long, dir, isReversed } = mtga.getState();
+  if (short !== long) {
+    return;
+  }
+  const currChar = el.value.charAt(short);
+  if (currChar !== key) {
+    return;
+  }
+  if (!getOpening(pairs, key)) {
+    return;
+  }
+  e.preventDefault();
+  mtga.setState({
+    isReversed,
+    short: short + 1,
+    long: long + 1,
+    dir
+  });
+};
 var closePairHandler = function(e) {
   if (e.defaultPrevented) {
+    return;
+  }
+  if (isComposingKeyboardEvent(e)) {
     return;
   }
   const mtga = this.parent;
@@ -313,6 +408,9 @@ var clearPairHandler = function(e) {
   if (e.defaultPrevented) {
     return;
   }
+  if (isComposingKeyboardEvent(e)) {
+    return;
+  }
   const mtga = this.parent;
   const el = this.parent.element;
   const pairs = this.pairs;
@@ -346,6 +444,7 @@ var clearPairHandler = function(e) {
   });
 };
 var onKeydown2 = function(e) {
+  overtypeClosingHandler.call(this, e);
   closePairHandler.call(this, e);
   clearPairHandler.call(this, e);
 };
@@ -372,7 +471,7 @@ var AutoPairModule = class _AutoPairModule extends MTGAModule {
 
 // src/utils/state.ts
 var getState = (el, withValue) => {
-  const isReversed = el.selectionStart > el.selectionEnd;
+  const isReversed = el.selectionDirection === "backward";
   const short = Math.min(el.selectionStart, el.selectionEnd);
   const long = Math.max(el.selectionStart, el.selectionEnd);
   const dir = el.selectionDirection;
@@ -400,11 +499,7 @@ var setState = (el, state) => {
       isChanged = true;
     }
   }
-  if (!state.isReversed) {
-    el.setSelectionRange(state.short, state.long, state.dir);
-  } else {
-    el.setSelectionRange(state.long, state.short, state.dir);
-  }
+  el.setSelectionRange(state.short, state.long, state.dir);
   el.focus();
   if (isChanged) {
     el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -415,23 +510,30 @@ var setState = (el, state) => {
 // src/utils/row.ts
 var getRows = (el) => {
   const { short, long } = getState(el);
-  const arr = el.value.split(/\n/);
+  const arr = [];
+  let startIndex = 0;
+  for (const match of el.value.matchAll(/\r\n|\r|\n/g)) {
+    const endIndex = match.index + match[0].length;
+    arr.push(el.value.substring(startIndex, endIndex));
+    startIndex = endIndex;
+  }
+  arr.push(el.value.substring(startIndex));
   const rows = [];
   let offset = 0;
   for (let i = 0; i < arr.length; i++) {
     const item = arr[i];
     const isLastRow = i === arr.length - 1;
-    const value = isLastRow ? item : item + "\n";
-    const startIndex = offset;
-    const endIndex = startIndex + value.length;
+    const value = item;
+    const startIndex2 = offset;
+    const endIndex = startIndex2 + value.length;
     let selectionStart = -1, selectionEnd = -1, selectionValue = "";
-    if (short >= startIndex && short < endIndex) {
-      selectionStart = short - startIndex;
+    if (short >= startIndex2 && short < endIndex) {
+      selectionStart = short - startIndex2;
     }
-    if (long > startIndex && (!isLastRow ? long < endIndex : long <= endIndex)) {
-      selectionEnd = long - startIndex;
+    if (long > startIndex2 && (!isLastRow ? long < endIndex : long <= endIndex)) {
+      selectionEnd = long - startIndex2;
     }
-    if (short <= startIndex && long >= endIndex) {
+    if (short <= startIndex2 && long >= endIndex) {
       selectionStart = 0;
       selectionEnd = value.length;
     }
@@ -445,7 +547,7 @@ var getRows = (el) => {
     const newRow = {
       isSelected,
       index: i,
-      startIndex,
+      startIndex: startIndex2,
       endIndex,
       value,
       selectionStart,
@@ -459,6 +561,24 @@ var getRows = (el) => {
 };
 
 // src/modules/comment.ts
+var getLeadingWhitespace2 = (value) => value.match(/^[^\S\r\n]*/) ? value.match(/^[^\S\r\n]*/)[0] : "";
+var escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var getCommentParts = (value, baseIndent) => {
+  const base = value.startsWith(baseIndent) ? baseIndent : "";
+  const rest = value.substring(base.length);
+  return {
+    base,
+    rest
+  };
+};
+var getSharedLeadingWhitespace = (values) => {
+  const indents = values.filter((value) => value.trim()).map((value) => getLeadingWhitespace2(value));
+  if (indents.length === 0) {
+    return "";
+  }
+  const minSize = Math.min(...indents.map((indent) => indent.length));
+  return indents.find((indent) => indent.length === minSize) || "";
+};
 var singleLineHandler = function(e) {
   if (e.defaultPrevented) {
     return;
@@ -478,12 +598,14 @@ var singleLineHandler = function(e) {
   const selectedEmptyRows = selectedRows.filter((r) => !r.value.trim());
   const isMultiple = selectedRows.length > 1;
   const isIgnoreEmptyRows = isMultiple && selectedRows.length !== selectedEmptyRows.length;
+  const targetRows = isIgnoreEmptyRows ? selectedRows.filter((r) => r.value.trim()) : selectedRows;
+  const sharedLeadingWhitespace = getSharedLeadingWhitespace(targetRows.map((row) => row.value));
+  const sharedCommentPattern = new RegExp(
+    `^${escapeRegExp(sharedLeadingWhitespace)}${pattern.source}`
+  );
   let shouldRemove = true;
-  for (const r of selectedRows) {
-    if (isIgnoreEmptyRows && selectedEmptyRows.some((_r) => _r.index === r.index)) {
-      continue;
-    }
-    if (!r.value.startsWith("//")) {
+  for (const r of targetRows) {
+    if (!sharedCommentPattern.test(r.value)) {
       shouldRemove = false;
       break;
     }
@@ -502,17 +624,23 @@ var singleLineHandler = function(e) {
     let newValue;
     if (isMultiple) {
       if (shouldRemove) {
-        newValue = row.value.replace(pattern, "");
+        newValue = row.value.replace(sharedCommentPattern, sharedLeadingWhitespace);
       } else if (isIgnoreEmptyRows && selectedEmptyRows.some((r) => r.index === row.index)) {
         newValue = row.value;
       } else {
-        newValue = value + row.value;
+        const { base, rest } = getCommentParts(row.value, sharedLeadingWhitespace);
+        newValue = `${base}${value}${rest}`;
       }
     } else {
+      const rowLeadingWhitespace = getLeadingWhitespace2(row.value);
+      const rowCommentPattern = new RegExp(
+        `^${escapeRegExp(rowLeadingWhitespace)}${pattern.source}`
+      );
       if (shouldRemove) {
-        newValue = row.value.replace(pattern, "");
+        newValue = row.value.replace(rowCommentPattern, rowLeadingWhitespace);
       } else {
-        newValue = value + row.value;
+        const { base, rest } = getCommentParts(row.value, rowLeadingWhitespace);
+        newValue = `${base}${value}${rest}`;
       }
     }
     const diff = newValue.length - origValue.length;
@@ -593,7 +721,7 @@ var CommentModule = class _CommentModule extends MTGAModule {
   }
   static name = "Comment";
   static defaults = {
-    pattern: /^\/\/\s?/,
+    pattern: /\/\/\s?/,
     value: "// "
   };
   onKeydown = onKeydown3;
@@ -868,16 +996,16 @@ var LineBreakModule = class _LineBreakModule extends MTGAModule {
 };
 
 // src/modules/line-copy.ts
-var IS_SUPPORTED = !!navigator.clipboard?.writeText;
 var onKeydown7 = async function(e) {
   if (e.defaultPrevented) {
     return;
   }
-  if (!IS_SUPPORTED) {
+  const mtga = this.parent;
+  const MTGAClass = mtga.constructor;
+  if (!MTGAClass.isClipboardWriteSupported()) {
     console.warn(`navigator.clipboard.writeText not found`);
     return;
   }
-  const mtga = this.parent;
   const el = this.parent.element;
   const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
   const { short, long, dir, isReversed } = mtga.getState();
@@ -907,16 +1035,16 @@ var LineCopyModule = class _LineCopyModule extends MTGAModule {
 };
 
 // src/modules/line-cut.ts
-var IS_SUPPORTED2 = !!navigator.clipboard?.writeText;
 var onKeydown8 = async function(e) {
   if (e.defaultPrevented) {
     return;
   }
-  if (!IS_SUPPORTED2) {
+  const mtga = this.parent;
+  const MTGAClass = mtga.constructor;
+  if (!MTGAClass.isClipboardWriteSupported()) {
     console.warn(`navigator.clipboard.writeText not found`);
     return;
   }
-  const mtga = this.parent;
   const el = this.parent.element;
   const { key, altKey, ctrlKey, shiftKey } = parseKeyboardEvent(e);
   const { short, long, dir, isReversed } = mtga.getState();
@@ -1081,11 +1209,18 @@ var MTGA = class _MTGA {
   _pasteEvent;
   _focusEvent;
   _blurEvent;
+  _selectionEvent;
   static exists(el) {
     return !!_MTGA.getMTGA(el);
   }
   static getMTGA(el) {
     return MTGAMap.get(el);
+  }
+  static isNavigatorSupported() {
+    return typeof navigator !== "undefined";
+  }
+  static isClipboardWriteSupported() {
+    return _MTGA.isNavigatorSupported() && !!navigator.clipboard?.writeText;
   }
   static defaults = {
     eventListenerOptions: {
@@ -1135,7 +1270,7 @@ var MTGA = class _MTGA {
         await m.onPaste?.call(m, e);
       }
     };
-    const _selectionEvent = (e) => {
+    this._selectionEvent = (e) => {
       this.addHistory(false);
     };
     this._focusEvent = (e) => {
@@ -1143,7 +1278,7 @@ var MTGA = class _MTGA {
         this.addHistory(false);
         this.element.addEventListener(
           "pointerup",
-          _selectionEvent,
+          this._selectionEvent,
           _MTGA.defaults.eventListenerOptions
         );
       }, 0);
@@ -1151,7 +1286,7 @@ var MTGA = class _MTGA {
     this._blurEvent = (e) => {
       this.element.removeEventListener(
         "pointerup",
-        _selectionEvent,
+        this._selectionEvent,
         _MTGA.defaults.eventListenerOptions
       );
     };
@@ -1169,11 +1304,27 @@ var MTGA = class _MTGA {
     this.element.addEventListener("blur", this._blurEvent, _MTGA.defaults.eventListenerOptions);
   }
   removeEvents() {
-    this.element.removeEventListener("keydown", this._keydownEvent);
-    this.element.removeEventListener("keyup", this._keyupEvent);
-    this.element.removeEventListener("paste", this._pasteEvent);
-    this.element.removeEventListener("focus", this._focusEvent);
-    this.element.removeEventListener("blur", this._blurEvent);
+    this.element.removeEventListener(
+      "keydown",
+      this._keydownEvent,
+      _MTGA.defaults.eventListenerOptions
+    );
+    this.element.removeEventListener("keyup", this._keyupEvent, _MTGA.defaults.eventListenerOptions);
+    this.element.removeEventListener("paste", this._pasteEvent, _MTGA.defaults.eventListenerOptions);
+    this.element.removeEventListener("focus", this._focusEvent, _MTGA.defaults.eventListenerOptions);
+    this.element.removeEventListener("blur", this._blurEvent, _MTGA.defaults.eventListenerOptions);
+    this.element.removeEventListener(
+      "pointerup",
+      this._selectionEvent,
+      _MTGA.defaults.eventListenerOptions
+    );
+  }
+  destroy() {
+    this.removeEvents();
+    this.modules = {};
+    this.moduleOrder = [];
+    this._keydownState = null;
+    MTGAMap.delete(this.element);
   }
   setModuleOrder() {
     this.moduleOrder = Object.values(this.modules).sort((a, b) => a.index - b.index);
