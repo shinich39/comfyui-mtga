@@ -12,7 +12,7 @@ import {
   LineBreakModule, 
   HistoryModule, 
   LineRemoveModule
-} from "./libs/mtga.mjs?v=20260612"; // unload js cache
+} from "./libs/mtga.mjs?v=20260628"; // unload js cache
 
 AutoPairModule.defaults.pairs = {
   "{": "}",
