@@ -211,6 +211,39 @@ function getIndent(pairs, indentUnit, rows) {
 // src/modules/auto-indent.ts
 var getLeadingWhitespace = (value) => value.match(/^[^\S\r\n]*/) ? value.match(/^[^\S\r\n]*/)[0] : "";
 var getOutdentedWhitespace = (value, indentUnit) => value.length >= indentUnit.length ? value.slice(0, value.length - indentUnit.length) : "";
+var getCurrentRow = (value) => value.split(/\r\n|\r|\n/).pop() || "";
+var getEnterInsertion = ({
+  left,
+  currentRow,
+  currChar,
+  pairs,
+  indentUnit
+}) => {
+  if (!currentRow.trim().length && isClosing(pairs, currChar)) {
+    return {
+      center: "\n",
+      caretOffset: 1
+    };
+  }
+  if (isClosing(pairs, currChar)) {
+    const innerIndent = getIndent(pairs, indentUnit, left.split(/\r\n|\r|\n/));
+    const closingIndent = getOutdentedWhitespace(innerIndent, indentUnit);
+    return {
+      center: `
+${innerIndent}
+${closingIndent}`,
+      caretOffset: 1 + innerIndent.length
+    };
+  }
+  const baseIndent = getLeadingWhitespace(currentRow);
+  const prevChar = currentRow.trimEnd().slice(-1);
+  const nextIndent = isOpening(pairs, prevChar) ? baseIndent + indentUnit : baseIndent;
+  return {
+    center: `
+${nextIndent}`,
+    caretOffset: 1 + nextIndent.length
+  };
+};
 var outdentClosingHandler = function(e) {
   if (e.defaultPrevented) {
     return;
@@ -231,7 +264,7 @@ var outdentClosingHandler = function(e) {
     return;
   }
   const left = el.value.substring(0, short);
-  const currentRow = left.split(/\r\n|\r|\n/).pop() || "";
+  const currentRow = getCurrentRow(left);
   const leadingWhitespace = getLeadingWhitespace(currentRow);
   if (currentRow.trim().length > 0 || leadingWhitespace.length < indentUnit.length) {
     return;
@@ -275,33 +308,23 @@ var enterHandler = function(e) {
   const { pairs, indentUnit } = this;
   const { short, long } = mtga.getState();
   const left = el.value.substring(0, short);
-  const currentRow = left.split(/\r\n|\r|\n/).pop() || "";
-  const baseIndent = getLeadingWhitespace(currentRow);
-  const trimmedCurrentRow = currentRow.trimEnd();
-  const prevChar = trimmedCurrentRow.charAt(trimmedCurrentRow.length - 1);
+  const currentRow = getCurrentRow(left);
   const currChar = el.value.charAt(short);
-  const isWhitespaceOnlyBeforeClosing = !currentRow.trim().length && isClosing(pairs, currChar);
-  let center = "\n";
   const right = el.value.substring(long);
-  const nextIndent = isOpening(pairs, prevChar) ? baseIndent + indentUnit : baseIndent;
-  let newShort = short + 1;
-  if (isWhitespaceOnlyBeforeClosing) {
-    center = "\n";
-  } else if (isClosing(pairs, currChar)) {
-    const closingIndent = isOpening(pairs, prevChar) ? baseIndent : getOutdentedWhitespace(baseIndent, indentUnit);
-    center += nextIndent + "\n" + closingIndent;
-    newShort += nextIndent.length;
-  } else {
-    center += nextIndent;
-    newShort += nextIndent.length;
-  }
+  const { center, caretOffset } = getEnterInsertion({
+    left,
+    currentRow,
+    currChar,
+    pairs,
+    indentUnit
+  });
   const newValue = left + center + right;
-  const newLong = newShort;
+  const newShort = short + caretOffset;
   mtga.setState(
     {
       isReversed: false,
       short: newShort,
-      long: newLong,
+      long: newShort,
       value: newValue
     },
     false,

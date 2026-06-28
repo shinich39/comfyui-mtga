@@ -2,7 +2,7 @@
 @author: shinich39
 @title: comfyui-mtga
 @nickname: comfyui-mtga
-@version: 1.0.40
+@version: 1.0.41
 @description: Make Textarea Great Again
 """
 
