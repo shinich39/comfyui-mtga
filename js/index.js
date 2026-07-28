@@ -673,35 +673,26 @@ app.registerExtension({
     // Nodes 2.0
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        for (const nodeEl of mutation.addedNodes) {
-          try {
-            if (!nodeEl.getAttribute) {
-              continue;
-            }
+        for (const added of mutation.addedNodes) {
+          if (!(added instanceof Element)) continue;
 
-            // const nodeType = nodeEl.getAttribute("node-type");
+          const textareas = [
+            ...(added.matches("textarea") ? [added] : []),
+            ...added.querySelectorAll("textarea"),
+          ];
+
+          for (const el of textareas) {
+            if (eventMap.has(el)) continue;
+
+            const nodeEl = el.closest("[node-id]");
+            if (!nodeEl) continue;
+
             const nodeId = nodeEl.getAttribute("node-id");
             const node = app.graph.getNodeById(nodeId);
+            if (!node) continue;
 
-            if (!node) {
-              continue;
-            }
-
-            for (const el of nodeEl.children) {
-              if (el.tagName !== "TEXTAREA") {
-                continue;
-              }
-
-              if (eventMap.has(el)) {
-                continue;
-              }
-
-              eventMap.add(el);
-
-              init(node, el);
-            }
-          } catch(err) {
-            console.error(err);
+            eventMap.add(el);
+            init(node, el);
           }
         }
       }
