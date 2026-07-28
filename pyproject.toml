@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-mtga"
 description = "Make Textarea Great Again"
-version = "1.0.42"
+version = "1.0.43"
 license = { file = "LICENSE" }
 
 [project.urls]
