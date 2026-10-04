@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-mtga"
 description = "Make Textarea Great Again. This node enables simple IDE-like commands in textareas within ComfyUI nodes."
-version = "1.0.43"
+version = "1.0.44"
 license = { file = "LICENSE" }
 
 [project.urls]
