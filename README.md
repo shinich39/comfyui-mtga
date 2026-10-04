@@ -1,11 +1,11 @@
 # comfyui-mtga
 
-Make Textarea Great Again
+Make Textarea Great Again.
+This node enables simple IDE-like commands in textareas within ComfyUI nodes.
+
+Support nodes 2.0.
 
 ## Usage  
-
-Support nodes 2.0
-
 - Undo, Redo: Ctrl+Z, Ctrl+Shift+Z
 - Comment: Ctrl+/
 - Indent: Tab, Shift+Tab
@@ -17,7 +17,6 @@ Support nodes 2.0
 - LineCut: Ctrl+X with cursor on a character
 - LinePaste: Ctrl+V with cursor on a character after single line copy e.g., "blahblah...\n"
 - LineRemove: Ctrl+Shift+K
-
 <!-- - Beautify: Ctrl+B, Ctrl+Shift+B -->
 - Control weight: Ctrl+ArrowUp, Ctrl+ArrowDown
 
